@@ -162,7 +162,7 @@ namespace ClaudeAutoPass
                     else
                     {
                         string name = step == 1 ? "light" : "dark";
-                        log.AppendLine(name + ": open=" + menu.IsOpen);
+                        log.AppendLine(name + ": open=" + menu.IsOpen + " " + menu.Layout);
                         using (var bmp = new Bitmap(460, 600))
                         {
                             CaptureScreen(bmp, at.X - 20, at.Y - 580);

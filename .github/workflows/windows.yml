@@ -101,11 +101,6 @@ jobs:
           $p = Start-Process dist/claude-auto-pass.exe -ArgumentList '--self-test-menu', $prefix -Wait -PassThru
           if (Test-Path "$prefix.txt") { Get-Content "$prefix.txt" }
           if (Test-Path "$prefix.crash.txt") { Get-Content "$prefix.crash.txt" }
-          foreach ($f in Get-ChildItem screenshots -Filter *.png) {
-            Write-Host "== $($f.Name) base64 begin"
-            Write-Host ([Convert]::ToBase64String([IO.File]::ReadAllBytes($f.FullName)))
-            Write-Host "== $($f.Name) base64 end"
-          }
           if ($p.ExitCode -ne 0) { Write-Error "Tray menu self-test failed ($($p.ExitCode))"; exit 1 }
       - uses: actions/upload-artifact@v7
         if: always() && steps.version.outputs.skip != 'true'
