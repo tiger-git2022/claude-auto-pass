@@ -39,10 +39,13 @@ namespace ClaudeAutoPass
         static extern bool GetWindowRect(IntPtr hWnd, out Rect rect);
 
         [DllImport("user32.dll")]
+        static extern bool GetClientRect(IntPtr hWnd, out Rect rect);
+
+        [DllImport("user32.dll")]
         static extern bool SetWindowPos(IntPtr hWnd, IntPtr after, int x, int y, int cx, int cy, uint flags);
 
         static readonly IntPtr TopMost = new IntPtr(-1);
-        const uint NoSize = 0x0001, NoActivate = 0x0010;
+        const uint NoActivate = 0x0010;
 
         FluentWindow window;
 
@@ -70,6 +73,9 @@ namespace ClaudeAutoPass
         public static void UseTheme(bool dark) => ApplicationThemeManager.Apply(dark ? ApplicationTheme.Dark : ApplicationTheme.Light, WindowBackdropType.None, true);
 
         public bool IsOpen => window != null && window.IsVisible;
+
+        /// <summary>Sizes measured when the menu last opened (for the self-test log).</summary>
+        public string Layout { get; private set; }
 
         /// <summary>Opens the menu next to the given screen point (physical pixels), like a context menu.</summary>
         public void Show(IEnumerable<Entry> entries, System.Drawing.Point at)
@@ -111,16 +117,19 @@ namespace ClaudeAutoPass
             System.Windows.Forms.Integration.ElementHost.EnableModelessKeyboardInterop(w);
             window = w;
             w.Show();
-            // SizeToContent also counts the caption and frame that WindowChrome removed, which leaves empty space
-            // under the last item; size the window to the list itself instead.
+            // WPF sizes the window as if it still had a caption and frame (SizeToContent and Width/Height both),
+            // although WindowChrome turned the whole window into content; that left empty space under the last
+            // item. Size the native window to the list itself, in physical pixels.
             w.UpdateLayout();
             w.SizeToContent = SizeToContent.Manual;
-            w.Width = Math.Ceiling(list.ActualWidth + list.Margin.Left + list.Margin.Right);
-            w.Height = Math.Ceiling(list.ActualHeight + list.Margin.Top + list.Margin.Bottom);
-            w.UpdateLayout();
+            double width = Math.Ceiling(list.ActualWidth + list.Margin.Left + list.Margin.Right);
+            double height = Math.Ceiling(list.ActualHeight + list.Margin.Top + list.Margin.Bottom);
+            Matrix toDevice = PresentationSource.FromVisual(w)?.CompositionTarget?.TransformToDevice ?? Matrix.Identity;
             ApplyTheme(w);
-            Place(w, at);
             IntPtr handle = new WindowInteropHelper(w).Handle;
+            Place(handle, at, (int)Math.Ceiling(width * toDevice.M11), (int)Math.Ceiling(height * toDevice.M22));
+            w.UpdateLayout();
+            Layout = Describe(handle, w, list, toDevice);
             SetForegroundWindow(handle);
             w.Activate();
         }
@@ -156,18 +165,24 @@ namespace ClaudeAutoPass
             catch (Exception) { }
         }
 
-        /// <summary>Puts the menu above and to the right of the point, flipped to stay inside the work area.</summary>
-        static void Place(Window w, System.Drawing.Point at)
+        /// <summary>Sizes the menu and puts it above and to the right of the point, flipped to stay inside the work area.</summary>
+        static void Place(IntPtr handle, System.Drawing.Point at, int width, int height)
         {
-            IntPtr handle = new WindowInteropHelper(w).Handle;
-            if (!GetWindowRect(handle, out Rect r)) return;
-            int width = r.Right - r.Left, height = r.Bottom - r.Top;
             System.Drawing.Rectangle area = System.Windows.Forms.Screen.FromPoint(at).WorkingArea;
             int x = at.X + width <= area.Right ? at.X : at.X - width;
             int y = at.Y - height >= area.Top ? at.Y - height : at.Y;
             x = Math.Max(area.Left, Math.Min(x, area.Right - width));
             y = Math.Max(area.Top, Math.Min(y, area.Bottom - height));
-            SetWindowPos(handle, TopMost, x, y, 0, 0, NoSize | NoActivate);
+            SetWindowPos(handle, TopMost, x, y, width, height, NoActivate);
+        }
+
+        /// <summary>Window, client and content sizes after layout (self-test log).</summary>
+        static string Describe(IntPtr handle, Window w, FrameworkElement list, Matrix toDevice)
+        {
+            GetWindowRect(handle, out Rect r);
+            GetClientRect(handle, out Rect c);
+            return $"scale={toDevice.M11:F2} window={r.Right - r.Left}x{r.Bottom - r.Top}px client={c.Right - c.Left}x{c.Bottom - c.Top}px "
+                + $"wpf={w.ActualWidth:F1}x{w.ActualHeight:F1} list={list.ActualWidth:F1}x{list.ActualHeight:F1} margin={list.Margin}";
         }
 
         static UIElement Separator()
