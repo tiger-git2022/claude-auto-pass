@@ -118,7 +118,7 @@ namespace ClaudeAutoPass
                     if (c.Kind != Kind.Session && c.Kind != Kind.Once) continue;
                     if (best != null && (best.Kind == Kind.Session || c.Kind != Kind.Session)) continue;
                     if (!CachedEnabled(c.Element) || !ids.Contains(CachedProcessId(c.Element))) continue;
-                    if (InApprovalGroup(c.Element)) best = c;
+                    if (InApprovalGroup(c.Element, root)) best = c;
                 }
                 if (best != null && best.Kind == Kind.Session) break;
             }
@@ -146,15 +146,18 @@ namespace ClaudeAutoPass
             return list;
         }
 
-        /// <summary>Walks up a few levels to find the prompt container, mirroring the Android service.</summary>
-        bool InApprovalGroup(IUIAutomationElement element)
+        /// <summary>
+        /// Walks up a few levels to find the prompt container, mirroring the Android service. The walk stays
+        /// below the window root, so buttons elsewhere in the window or in other apps never count.
+        /// </summary>
+        bool InApprovalGroup(IUIAutomationElement element, IUIAutomationElement windowRoot)
         {
             IUIAutomationElement current = element;
             for (int distance = 0; distance < MaxGroupDistance; distance++)
             {
                 try { current = walker.GetParentElement(current); }
                 catch (COMException) { return false; }
-                if (current == null) return false;
+                if (current == null || uia.CompareElements(current, windowRoot) != 0) return false;
                 List<Kind> kinds = Buttons(current).Select(c => c.Kind).ToList();
                 if (ApprovalRules.IsApprovalGroup(kinds)) return true;
             }
@@ -223,7 +226,7 @@ namespace ClaudeAutoPass
                     sb.AppendLine("  元素很少：Claude 可能没有开启辅助功能树。可在托盘菜单选择「以辅助功能模式重启 Claude」。 / Few elements: try 'Restart Claude with accessibility'.");
                 foreach (Candidate c in found)
                 {
-                    string group = c.Kind == Kind.Session || c.Kind == Kind.Once ? (InApprovalGroup(c.Element) ? " [审批组 / group]" : " [单独 / isolated]") : "";
+                    string group = c.Kind == Kind.Session || c.Kind == Kind.Once ? (InApprovalGroup(c.Element, root) ? " [审批组 / group]" : " [单独 / isolated]") : "";
                     sb.AppendLine($"  - \"{c.Label}\" → {c.Kind}{group}{(CachedEnabled(c.Element) ? "" : " (disabled)")}");
                 }
             }

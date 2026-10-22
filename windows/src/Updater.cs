@@ -39,12 +39,19 @@ namespace ClaudeAutoPass
         /// <summary>Newest Windows release, or null when none is newer than this build.</summary>
         public static async Task<Release> CheckAsync()
         {
-            string json = await Http.GetStringAsync("https://api.github.com/repos/" + AppInfo.Repo + "/releases?per_page=50").ConfigureAwait(false);
+            // Android and Windows releases share the list, so read every page instead of trusting the first one.
             var serializer = new JavaScriptSerializer { MaxJsonLength = 16 * 1024 * 1024 };
-            var releases = serializer.Deserialize<ArrayList>(json);
+            var releases = new List<Dictionary<string, object>>();
+            for (int page = 1; page <= 20; page++)
+            {
+                string json = await Http.GetStringAsync("https://api.github.com/repos/" + AppInfo.Repo + "/releases?per_page=100&page=" + page).ConfigureAwait(false);
+                List<Dictionary<string, object>> batch = serializer.Deserialize<ArrayList>(json).OfType<Dictionary<string, object>>().ToList();
+                releases.AddRange(batch);
+                if (batch.Count < 100) break;
+            }
             Release best = null;
             int[] bestVersion = null;
-            foreach (Dictionary<string, object> r in releases.OfType<Dictionary<string, object>>())
+            foreach (Dictionary<string, object> r in releases)
             {
                 if (True(r, "draft") || True(r, "prerelease")) continue;
                 string tag = Str(r, "tag_name");
