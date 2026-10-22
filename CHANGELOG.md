@@ -4,6 +4,8 @@
 
 ### 中文
 
+- 缩短通知栏标题，完整显示自动审批的开启、关闭和重连状态。
+
 - 修复后台稳定性：新增可退出的前台保活服务，保留反馈中断与系统重连前的开关状态。
 - 区分无障碍权限与服务连接状态，增加后台运行设置入口。
 
@@ -16,6 +18,8 @@
 - GitHub Actions 自动测试、编译签名 APK，每次推送 main 自动发布新的 -tN 编号版本。
 
 ### English
+
+- Shorten notification titles so enable, disable, and reconnect states fit on screen.
 
 - Improve background stability with a user-stoppable foreground service; preserve controls across feedback interruptions and system reconnections.
 - Distinguish accessibility authorization from service connection and add background settings guidance.

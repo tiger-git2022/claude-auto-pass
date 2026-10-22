@@ -31,13 +31,13 @@ final class Control {
         NotificationManager manager = c.getSystemService(NotificationManager.class);
         manager.createNotificationChannel(new NotificationChannel(CHANNEL, "自动审批开关", NotificationManager.IMPORTANCE_LOW));
         boolean connected = ApprovalService.connected(), granted = AccessibilityState.granted(c), on = enabled(c);
-        String state = !granted ? "等待无障碍授权" : !connected ? "等待无障碍连接" : on ? "已开启" : "已关闭";
+        String state = !granted ? "待授权" : !connected ? "重连中" : on ? "开启" : "关闭";
         String message = !granted ? "打开 App 完成无障碍设置" : !connected ? "权限已开启，服务正在等待系统连接" : on ? "优先允许本次会话，其次允许一次" : "点击“开启”恢复自动审批";
         PendingIntent toggle = PendingIntent.getBroadcast(c, 1, new Intent(c, ToggleReceiver.class).setAction(ACTION_TOGGLE), PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
         PendingIntent exit = PendingIntent.getBroadcast(c, 3, new Intent(c, ToggleReceiver.class).setAction(ACTION_EXIT), PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
         PendingIntent open = PendingIntent.getActivity(c, 2, new Intent(c, MainActivity.class), PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
         Notification.Builder builder = new Notification.Builder(c, CHANNEL)
-            .setSmallIcon(R.drawable.ic_approval).setContentTitle("Claude 自动审批 · " + state)
+            .setSmallIcon(R.drawable.ic_approval).setContentTitle("自动审批：" + state)
             .setContentText(message).setContentIntent(open).setOngoing(true).setOnlyAlertOnce(true).setShowWhen(false);
         if (granted) builder.addAction(new Notification.Action.Builder(null, on ? "关闭" : "开启", toggle).build());
         else builder.addAction(new Notification.Action.Builder(null, "打开设置", open).build());
