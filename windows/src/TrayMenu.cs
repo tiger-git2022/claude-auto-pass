@@ -76,6 +76,10 @@ namespace ClaudeAutoPass
         {
             Close();
             var list = new StackPanel { Margin = new Thickness(0, 4, 0, 4), MinWidth = 248 };
+            // Display mode snaps glyphs to pixels like native menus; the default "Ideal" mode looks soft for small
+            // Chinese text, more so over the acrylic backdrop where ClearType is unavailable.
+            TextOptions.SetTextFormattingMode(list, TextFormattingMode.Display);
+            TextOptions.SetTextHintingMode(list, TextHintingMode.Fixed);
             var w = new FluentWindow
             {
                 ExtendsContentIntoTitleBar = true,
@@ -107,6 +111,13 @@ namespace ClaudeAutoPass
             System.Windows.Forms.Integration.ElementHost.EnableModelessKeyboardInterop(w);
             window = w;
             w.Show();
+            // SizeToContent also counts the caption and frame that WindowChrome removed, which leaves empty space
+            // under the last item; size the window to the list itself instead.
+            w.UpdateLayout();
+            w.SizeToContent = SizeToContent.Manual;
+            w.Width = Math.Ceiling(list.ActualWidth + list.Margin.Left + list.Margin.Right);
+            w.Height = Math.Ceiling(list.ActualHeight + list.Margin.Top + list.Margin.Bottom);
+            w.UpdateLayout();
             ApplyTheme(w);
             Place(w, at);
             IntPtr handle = new WindowInteropHelper(w).Handle;
