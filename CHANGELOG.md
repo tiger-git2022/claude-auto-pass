@@ -4,6 +4,8 @@
 
 ### 中文
 
+- 移除通知右侧多余的大图标，保留系统通知图标和开启、关闭、退出操作。
+
 - 采用用户提供的橙色盾牌勾图标包，替换桌面、圆形桌面、通知栏和快捷开关图标。
 
 - 缩短通知栏标题，完整显示自动审批的开启、关闭和重连状态。
@@ -20,6 +22,8 @@
 - GitHub Actions 自动测试、编译签名 APK，每次推送 main 自动发布新的 -tN 编号版本。
 
 ### English
+
+- Remove the redundant large icon on the right of the notification, retaining the system notification icon and controls.
 
 - Use the supplied orange shield and check icon pack for launcher, round launcher, notification, and Quick Settings icons.
 

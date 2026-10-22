@@ -38,7 +38,6 @@ final class Control {
         PendingIntent open = PendingIntent.getActivity(c, 2, new Intent(c, MainActivity.class), PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
         Notification.Builder builder = new Notification.Builder(c, CHANNEL)
             .setSmallIcon(R.drawable.ic_status)
-            .setLargeIcon(android.graphics.BitmapFactory.decodeResource(c.getResources(), R.mipmap.ic_launcher))
             .setContentTitle("自动审批：" + state)
             .setContentText(message).setContentIntent(open).setOngoing(true).setOnlyAlertOnce(true).setShowWhen(false);
         if (granted) builder.addAction(new Notification.Action.Builder(null, on ? "关闭" : "开启", toggle).build());
