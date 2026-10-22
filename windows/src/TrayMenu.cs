@@ -144,7 +144,8 @@ namespace ClaudeAutoPass
                 Size size = list.DesiredSize; // natural size, including the list's margin
                 int width = (int)Math.Ceiling(size.Width * dpi.DpiScaleX), height = (int)Math.Ceiling(size.Height * dpi.DpiScaleY);
                 GetWindowRect(handle, out Rect r);
-                if (r.Right - r.Left != width || r.Bottom - r.Top != height) Place(handle, at, width, height);
+                // The first call also moves the window from its off-screen start to the click point.
+                if (reason == "show" || r.Right - r.Left != width || r.Bottom - r.Top != height) Place(handle, at, width, height);
                 Layout += reason + ": " + Describe(handle, w, list, dpi) + "\n";
             }
             fitCheck = () =>
@@ -152,7 +153,10 @@ namespace ClaudeAutoPass
                 GetWindowRect(handle, out Rect r);
                 DpiScale dpi = VisualTreeHelper.GetDpi(w);
                 int expected = (int)Math.Ceiling(list.DesiredSize.Height * dpi.DpiScaleY);
-                return r.Bottom - r.Top == expected ? null : $"window height {r.Bottom - r.Top}px, list {expected}px";
+                if (r.Bottom - r.Top != expected) return $"window height {r.Bottom - r.Top}px, list {expected}px";
+                System.Drawing.Rectangle area = System.Windows.Forms.Screen.FromPoint(at).WorkingArea;
+                return area.Contains(new System.Drawing.Rectangle(r.Left, r.Top, r.Right - r.Left, r.Bottom - r.Top)) ? null
+                    : $"window at {r.Left},{r.Top} is outside the work area {area}";
             };
             stretch = extra =>
             {
