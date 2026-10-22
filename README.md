@@ -18,7 +18,7 @@
 ### 安装与使用
 
 1. 在 [Releases](https://github.com/tiger-git2022/claude-auto-pass/releases/latest) 下载 `claude-auto-pass.apk` 并安装。需要 Android 9 或更高版本。
-2. 打开 App，允许通知，在系统无障碍设置中开启“Claude 自动审批”。初次连接服务时保持关闭。
+2. 打开 App，允许通知，在系统无障碍设置中开启“Claude 自动审批”。首次安装默认关闭，系统重连保留开关状态。
 3. 在 App 或通知栏点击“开启”，再进入 Claude 的审批界面。手机需解锁，Claude 需位于前台。
 4. 通知栏点击“关闭”暂停；点击“退出”停止并移除通知，无障碍设置保持开启。
 5. 在 App 点击“检查更新”；有新版时可查看更新说明、下载并手动安装。安装更新权限仅在安装时引导开启。
@@ -28,6 +28,8 @@ APK 侧载后，部分手机需先到应用详情页的菜单中选择“允许�
 ### 范围和隐私
 
 此工具会代你批准 Claude 请求的操作，开启前请确认这符合你的使用意图。只接受明确列出的按钮文字，并要求附近出现另一审批选项；不会按坐标盲点，也不会点击 Android 的系统授权弹窗。未知按钮文字会跳过，需根据实际 Claude 版本调整规则。
+
+运行期间使用带通知的前台服务维持后台运行，退出会停止前台服务，但保留无障碍权限。如果手机仍限制后台运行，可使用“后台运行设置”入口调整自启动和电池管理。权限授权与服务连接状态分别显示。
 
 无障碍在本机读取前台界面的按钮文字，不保存对话、截图或屏幕内容；只保存开关、上次操作和下载状态。不需要 Claude 登录凭据。网络仅用于 GitHub 版本查询和 APK 下载。
 
@@ -67,7 +69,7 @@ A small personal Android utility that handles approval buttons in the **official
 ### Usage
 
 1. Install `claude-auto-pass.apk` from [Releases](https://github.com/tiger-git2022/claude-auto-pass/releases/latest). Requires Android 9 or later.
-2. Open the app, allow notifications, and enable “Claude 自动审批” in accessibility settings. A newly connected service starts disabled.
+2. Open the app, allow notifications, and enable “Claude 自动审批” in accessibility settings. A new installation starts disabled; system reconnections preserve your switch setting.
 3. Enable approval in the app or notification, then open Claude. The phone must be unlocked and Claude must be in the foreground.
 4. Disable pauses approval. Exit stops it and removes the notification without revoking accessibility access.
 5. Tap Check for updates to view release notes, download an update, and confirm installation. The app guides you to the installation permission only when needed.
@@ -77,6 +79,8 @@ Some devices require allowing restricted settings in app details before enabling
 ### Scope and privacy
 
 This utility approves Claude requests on your behalf. Enable it only when that matches your intent. It requires explicit button labels and another nearby approval choice. It does not tap fixed coordinates or approve Android system permission dialogs. Unrecognized UI labels are skipped and may require a rules update.
+
+A foreground service with a visible notification keeps the helper running after leaving the screen. Exit stops that service and preserves accessibility authorization. If the device still restricts it, use Background settings to review autostart and battery settings. The UI distinguishes authorization from a live service connection.
 
 Button text is processed locally. No conversations, screenshots, or screen content are stored or uploaded. Local storage contains controls, the last action, and download state. No Claude credentials are needed. Networking is used only for GitHub release checks and APK downloads.
 

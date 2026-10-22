@@ -4,6 +4,9 @@
 
 ### 中文
 
+- 修复后台稳定性：新增可退出的前台保活服务，保留反馈中断与系统重连前的开关状态。
+- 区分无障碍权限与服务连接状态，增加后台运行设置入口。
+
 - 首次发布：Claude 官方 Android App 自动审批。
 - 优先“本次会话中始终允许”，其次“允许一次”。
 - 通知栏支持开启、关闭和退出；退出保留无障碍权限。
@@ -13,6 +16,9 @@
 - GitHub Actions 自动测试、编译签名 APK，每次推送 main 自动发布新的 -tN 编号版本。
 
 ### English
+
+- Improve background stability with a user-stoppable foreground service; preserve controls across feedback interruptions and system reconnections.
+- Distinguish accessibility authorization from service connection and add background settings guidance.
 
 - Initial release: automatic approval for the official Claude Android app.
 - Prefers session-wide approval, falling back to allow once.

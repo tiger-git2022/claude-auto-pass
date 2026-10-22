@@ -45,18 +45,23 @@ public final class MainActivity extends androidx.appcompat.app.AppCompatActivity
         status = text(body, "", 20);
         permissionStatus = text(body, "", 14);
         accessibilityButton = button(body, "开启无障碍服务", () -> startActivity(new Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)));
+        button(body, "后台运行设置", () -> new com.google.android.material.dialog.MaterialAlertDialogBuilder(this)
+            .setTitle("保持后台运行").setMessage("如果手机仍会断开服务，请在应用详情的电池或耗电管理中允许后台运行，并开启自启动；也可在最近任务中锁定本 App。系统入口因机型而异。")
+            .setNegativeButton("取消", null).setPositiveButton("打开应用详情", (dialog, which) -> startActivity(new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:" + getPackageName())))).show());
         notificationButton = button(body, "允许通知（通知栏开关）", this::requestNotifications);
         toggle = button(body, "开启自动审批", () -> {
-            if (!ApprovalService.connected()) {
+            if (!AccessibilityState.granted(this)) {
                 toast("请先开启 Claude 自动审批的无障碍服务");
                 startActivity(new Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)); return;
             }
             if (!Control.enabled(this) && !notificationsAllowed()) { requestNotifications(); return; }
-            Control.setEnabled(this, !Control.enabled(this)); refresh();
+            Control.setEnabled(this, !Control.enabled(this));
+            if (Control.enabled(this) && !ApprovalService.connected()) toast("已开启，等待系统重连后自动恢复");
+            refresh();
         });
         button(body, "退出（保留无障碍权限）", () -> { Control.exit(this); finishAndRemoveTask(); });
         lastAction = text(body, "", 13);
-        text(body, "首次连接服务时默认关闭。退出仅停止自动审批并移除通知，无障碍保持开启。只处理前台 Claude，不处理锁屏或系统权限。", 13);
+        text(body, "首次安装默认关闭。系统重连保留你的开关状态。退出停止审批和前台保活、移除通知，无障碍权限保持开启。", 13);
         text(body, "版本 " + version, 15);
         checkButton = button(body, "检查更新", this::checkUpdates);
         updateStatus = text(body, "", 14);
@@ -92,10 +97,10 @@ public final class MainActivity extends androidx.appcompat.app.AppCompatActivity
         super.onRequestPermissionsResult(code, permissions, results); Control.refresh(this); refresh();
     }
     private void refresh() {
-        boolean connected = ApprovalService.connected(), enabled = Control.enabled(this), notify = notificationsAllowed();
-        status.setText(!connected ? "尚未开启无障碍服务" : enabled ? "自动审批已开启" : "自动审批已关闭");
-        permissionStatus.setText("无障碍：" + (connected ? "已开启" : "未开启") + "    通知：" + (notify ? "已允许" : "未允许"));
-        accessibilityButton.setText(connected ? "无障碍设置（已开启）" : "开启无障碍服务");
+        boolean connected = ApprovalService.connected(), granted = AccessibilityState.granted(this), enabled = Control.enabled(this), notify = notificationsAllowed();
+        status.setText(!granted ? "尚未开启无障碍权限" : !connected ? "无障碍权限已开，等待系统连接" : enabled ? "自动审批已开启" : "自动审批已关闭");
+        permissionStatus.setText("无障碍：" + (granted ? connected ? "已连接" : "已授权，等待连接" : "未授权") + "    通知：" + (notify ? "已允许" : "未允许"));
+        accessibilityButton.setText(granted ? "无障碍设置（已授权）" : "开启无障碍服务");
         notificationButton.setVisibility(notify ? View.GONE : View.VISIBLE);
         toggle.setText(enabled ? "关闭自动审批" : "开启自动审批");
         String action = Control.prefs(this).getString("last_action", "尚未点击审批");

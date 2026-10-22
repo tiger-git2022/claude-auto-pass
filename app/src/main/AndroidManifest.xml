@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" /><uses-permission android:name="android.permission.INTERNET" /><uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
-    <queries><package android:name="com.anthropic.claude" /></queries>
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" /><uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" /><queries><package android:name="com.anthropic.claude" /></queries>
     <application android:theme="@style/Theme.ClaudeAutoPass"
         android:label="Claude 自动审批" android:icon="@drawable/ic_approval"
         android:allowBackup="false" android:supportsRtl="true">
@@ -22,6 +22,6 @@
             <intent-filter><action android:name="android.service.quicksettings.action.QS_TILE" /></intent-filter>
             <meta-data android:name="android.service.quicksettings.ACTIVE_TILE" android:value="true" />
         </service>
-        <receiver android:name=".ToggleReceiver" android:exported="false" />
+        <service android:name=".KeepAliveService" android:exported="false" android:foregroundServiceType="specialUse"><property android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE" android:value="User-enabled Claude approval control with persistent notification; keeps accessibility automation available while the UI is closed." /></service><receiver android:name=".ToggleReceiver" android:exported="false" />
     <provider android:name=".ApkProvider" android:authorities="com.personal.claudeautopass.apk" android:exported="false" android:grantUriPermissions="true" /></application>
 </manifest>

@@ -3,7 +3,7 @@ package com.personal.claudeautopass;
 import android.accessibilityservice.AccessibilityService;
 import android.app.KeyguardManager;
 import android.content.*;
-import android.graphics.Rect;
+import android.util.Log;
 import android.os.*;
 import android.view.accessibility.*;
 import java.util.*;
@@ -12,9 +12,14 @@ public final class ApprovalService extends AccessibilityService {
     private static ApprovalService instance;
     private final Handler handler = new Handler(Looper.getMainLooper());
     private long lastClick;
+    @Override protected void dump(java.io.FileDescriptor fd, java.io.PrintWriter writer, String[] args) {
+        writer.println("pid=" + android.os.Process.myPid() + " connected=" + connected() + " currentInstance=" + (instance == this));
+        writer.println("serviceInfo=" + (getServiceInfo() != null) + " granted=" + AccessibilityState.granted(this));
+        writer.println("running=" + Control.running(this) + " requestedEnabled=" + Control.enabled(this));
+    }
     private final Runnable scanLoop = new Runnable() {
         @Override public void run() {
-            if (Control.enabled(ApprovalService.this)) scan();
+            if (Control.enabled(ApprovalService.this)) safeScan();
             handler.postDelayed(this, 800);
         }
     };
@@ -25,7 +30,8 @@ public final class ApprovalService extends AccessibilityService {
     }
     @Override protected void onServiceConnected() {
         instance = this;
-        Control.setEnabled(this, false);
+        Log.i("ClaudeAutoPass", "Accessibility connected pid=" + android.os.Process.myPid());
+        Control.refresh(this);
         handler.removeCallbacksAndMessages(null);
         handler.post(scanLoop);
     }
@@ -33,14 +39,21 @@ public final class ApprovalService extends AccessibilityService {
         // A short settle time lets all approval choices appear before selecting one.
         if (Control.enabled(this)) { handler.removeCallbacks(eventScan); handler.postDelayed(eventScan, 280); }
     }
-    private final Runnable eventScan = this::scan;
-    @Override public void onInterrupt() { Control.setEnabled(this, false); }
+    private final Runnable eventScan = this::safeScan;
+    @Override public void onInterrupt() { Log.i("ClaudeAutoPass", "Feedback interrupted; preserving user switch"); }
     @Override public boolean onUnbind(Intent intent) { disconnect(); return super.onUnbind(intent); }
     @Override public void onDestroy() { disconnect(); super.onDestroy(); }
     private void disconnect() {
         handler.removeCallbacksAndMessages(null);
         if (instance == this) instance = null;
-        Control.setEnabled(this, false);
+        Log.i("ClaudeAutoPass", "Accessibility disconnected pid=" + android.os.Process.myPid());
+        Control.refresh(this);
+    }
+    private void safeScan() {
+        try { scan(); }
+        catch (IllegalStateException | SecurityException e) {
+            Log.w("ClaudeAutoPass", "Transient accessibility scan failure: " + e.getClass().getSimpleName());
+        }
     }
     private static final class Entry {
         final AccessibilityNodeInfo node;

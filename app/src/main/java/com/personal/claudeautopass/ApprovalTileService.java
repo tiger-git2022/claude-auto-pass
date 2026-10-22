@@ -14,7 +14,7 @@ public final class ApprovalTileService extends TileService {
         if (tile == null) return;
         boolean connected = ApprovalService.connected();
         tile.setState(!connected ? Tile.STATE_UNAVAILABLE : Control.enabled(this) ? Tile.STATE_ACTIVE : Tile.STATE_INACTIVE);
-        tile.setLabel(connected ? "Claude 自动审批" : "请先开启无障碍");
+        tile.setLabel(connected ? "Claude 自动审批" : AccessibilityState.granted(this) ? "等待无障碍连接" : "请先开启无障碍");
         tile.updateTile();
     }
 }
