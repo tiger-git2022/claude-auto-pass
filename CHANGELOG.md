@@ -4,6 +4,8 @@
 
 ### 中文
 
+- 通知栏小图标改为与桌面图标同形的实心盾牌勾（勾为镂空），通知展开时以同款橙色显示。
+
 - 采用用户提供的橙色盾牌勾图标包，替换桌面、圆形桌面、通知栏和快捷开关图标。
 
 - 缩短通知栏标题，完整显示自动审批的开启、关闭和重连状态。
@@ -20,6 +22,8 @@
 - GitHub Actions 自动测试、编译签名 APK，每次推送 main 自动发布新的 -tN 编号版本。
 
 ### English
+
+- Notification icon now matches the launcher: a solid shield with a cut-out check, tinted orange in the expanded notification.
 
 - Use the supplied orange shield and check icon pack for launcher, round launcher, notification, and Quick Settings icons.
 
