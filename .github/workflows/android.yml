@@ -2,9 +2,9 @@ name: Build APK
 on:
   push:
     branches: [main]
-    paths-ignore: ['**.md', 'docs/**']
+    paths-ignore: ['**.md', 'docs/**', 'windows/**', '.github/workflows/windows.yml', 'scripts/windows-ci.py']
   pull_request:
-    paths-ignore: ['**.md', 'docs/**']
+    paths-ignore: ['**.md', 'docs/**', 'windows/**', '.github/workflows/windows.yml', 'scripts/windows-ci.py']
   workflow_dispatch:
     inputs:
       force:

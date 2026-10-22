@@ -1,0 +1,17 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>auto-pass-test</title></head>
+<body>
+  <!-- Mimics a Claude Desktop tool permission prompt for the CI smoke test (Chromium, like Electron). -->
+  <h1>Claude wants to use a tool</h1>
+  <div role="dialog" aria-label="Permission">
+    <p>Run command: <code>ls</code></p>
+    <div>
+      <button onclick="document.title='CLICKED-DENY'">Deny</button>
+      <button onclick="document.title='CLICKED-ONCE'">Allow once</button>
+      <button onclick="document.title='CLICKED-SESSION'">Allow for this chat ⏎</button>
+    </div>
+  </div>
+  <p><button onclick="document.title='CLICKED-ALWAYS'">Always allow</button></p>
+</body>
+</html>
