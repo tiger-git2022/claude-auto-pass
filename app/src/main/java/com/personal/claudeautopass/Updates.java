@@ -77,7 +77,8 @@ final class Updates {
         Context c = context.getApplicationContext();
         PROGRESS.running = true; PROGRESS.downloaded = 0; PROGRESS.total = release.size; PROGRESS.error = null;
         forgetSystemDownload(c);
-        Control.prefs(c).edit().remove("download_file").remove("download_done").apply();
+        // Remembered until the download finishes, so a download cut off by the system killing the app is reported.
+        Control.prefs(c).edit().remove("download_file").remove("download_done").putString("download_pending", release.version).apply();
         DOWNLOADER.execute(() -> {
             try {
                 File folder = new File(c.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS), "updates");
@@ -91,9 +92,10 @@ final class Updates {
                 if (release.size > 0 && part.length() != release.size) throw new IOException("下载不完整，请重试");
                 if (!part.renameTo(new File(folder, fileName))) throw new IOException("无法保存更新文件");
                 Control.prefs(c).edit().putString("download_file", fileName).putString("download_version", release.version)
-                    .putString("download_sha256", release.sha256).putBoolean("download_done", true).apply();
+                    .putString("download_sha256", release.sha256).putBoolean("download_done", true).remove("download_pending").apply();
             } catch (Exception e) {
                 PROGRESS.error = e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage();
+                Control.prefs(c).edit().remove("download_pending").apply();
             } finally {
                 PROGRESS.running = false;
             }
@@ -131,6 +133,11 @@ final class Updates {
         if (id == -1) return;
         try { c.getSystemService(DownloadManager.class).remove(id); } catch (RuntimeException ignored) { }
         Control.prefs(c).edit().remove("download_id").apply();
+    }
+
+    /** Version whose download was cut off when the app process ended, or null. */
+    static String interrupted(Context c) {
+        return PROGRESS.running ? null : Control.prefs(c).getString("download_pending", null);
     }
 
     /** True when a finished, not yet installed download exists. */

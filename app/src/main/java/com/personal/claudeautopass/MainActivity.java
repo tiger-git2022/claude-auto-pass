@@ -154,6 +154,7 @@ public final class MainActivity extends androidx.appcompat.app.AppCompatActivity
         installButton.setVisibility(done ? View.VISIBLE : View.GONE);
         if (done) updateStatus.setText("更新下载完成，点击安装");
         else if (p.error != null) updateStatus.setText("下载失败：" + p.error + "。可重新检查更新，或打开 GitHub 仓库手动下载");
+        else if (Updates.interrupted(this) != null) updateStatus.setText("更新 " + Updates.interrupted(this) + " 的下载被中断，请点「检查更新」重新下载");
     }
     private void installUpdate() {
         if (verifying) return;
