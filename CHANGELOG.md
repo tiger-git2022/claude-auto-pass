@@ -4,6 +4,7 @@
 
 ### 中文
 
+- 修复 vivo OriginOS 通知栏和状态栏里图标被拉宽：图标的有效区域改为正方形，系统不再把偏高的盾牌拉成方形。
 - 移除通知右侧多余的大图标，保留系统通知图标和开启、关闭、退出操作。
 
 - 采用用户提供的橙色盾牌勾图标包，替换桌面、圆形桌面、通知栏和快捷开关图标。
@@ -23,6 +24,7 @@
 
 ### English
 
+- Fix the icon looking stretched in the vivo OriginOS status bar and notifications: the icon's visible bounds are now square, so the system no longer stretches the taller shield.
 - Remove the redundant large icon on the right of the notification, retaining the system notification icon and controls.
 
 - Use the supplied orange shield and check icon pack for launcher, round launcher, notification, and Quick Settings icons.
