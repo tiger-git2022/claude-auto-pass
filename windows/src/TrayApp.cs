@@ -172,7 +172,9 @@ namespace ClaudeAutoPass
             thread.Start();
             thread.Join(TimeSpan.FromSeconds(60));
             string path = Path.Combine(AppInfo.DataDir, "diagnostics.txt");
-            File.WriteAllText(path, report ?? "诊断超时 / Diagnostics timed out");
+            report = (report ?? "诊断超时 / Diagnostics timed out")
+                + "\r\n\r\n== 右键菜单尺寸 / Tray menu layout\r\n" + (menu.Layout ?? "").Replace("\n", "\r\n");
+            File.WriteAllText(path, report);
             Open(path);
         }
 

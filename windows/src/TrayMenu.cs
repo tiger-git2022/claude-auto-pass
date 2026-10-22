@@ -45,7 +45,7 @@ namespace ClaudeAutoPass
         static extern bool SetWindowPos(IntPtr hWnd, IntPtr after, int x, int y, int cx, int cy, uint flags);
 
         static readonly IntPtr TopMost = new IntPtr(-1);
-        const uint NoActivate = 0x0010;
+        const uint NoMove = 0x0002, NoZOrder = 0x0004, NoActivate = 0x0010;
 
         FluentWindow window;
 
@@ -74,14 +74,24 @@ namespace ClaudeAutoPass
 
         public bool IsOpen => window != null && window.IsVisible;
 
-        /// <summary>Sizes measured when the menu last opened (for the self-test log).</summary>
+        /// <summary>Sizes measured when the menu last opened (self-test log and diagnostics export).</summary>
         public string Layout { get; private set; }
+
+        Func<string> fitCheck;
+        Action<int> stretch;
+
+        /// <summary>Self-test: null when the open menu's window is exactly as tall as its items, else what differs.</summary>
+        public string CheckFit() => IsOpen ? fitCheck?.Invoke() : "menu not open";
+
+        /// <summary>Self-test: makes the open window taller, the way WPF did at 150% scaling, to check it shrinks back.</summary>
+        public void StretchForTest(int extraPixels) => stretch?.Invoke(extraPixels);
 
         /// <summary>Opens the menu next to the given screen point (physical pixels), like a context menu.</summary>
         public void Show(IEnumerable<Entry> entries, System.Drawing.Point at)
         {
             Close();
-            var list = new StackPanel { Margin = new Thickness(0, 4, 0, 4), MinWidth = 248 };
+            // Top-aligned, so the list keeps its natural height even while the window around it is too tall.
+            var list = new StackPanel { Margin = new Thickness(0, 4, 0, 4), MinWidth = 248, VerticalAlignment = VerticalAlignment.Top };
             // Display mode snaps glyphs to pixels like native menus; the default "Ideal" mode looks soft for small
             // Chinese text, more so over the acrylic backdrop where ClearType is unavailable.
             TextOptions.SetTextFormattingMode(list, TextFormattingMode.Display);
@@ -117,19 +127,41 @@ namespace ClaudeAutoPass
             System.Windows.Forms.Integration.ElementHost.EnableModelessKeyboardInterop(w);
             window = w;
             w.Show();
-            // WPF sizes the window as if it still had a caption and frame (SizeToContent and Width/Height both),
-            // although WindowChrome turned the whole window into content; that left empty space under the last
-            // item. Size the native window to the list itself, in physical pixels.
-            w.UpdateLayout();
+            // WPF sizes the window as if it still had a caption and frame, although WindowChrome turned the whole
+            // window into content; at 150% scaling that left empty space under the last item. Size the native window
+            // to the list's natural (desired) size in physical pixels instead, and again if WPF resizes it later.
             w.SizeToContent = SizeToContent.Manual;
-            double width = Math.Ceiling(list.ActualWidth + list.Margin.Left + list.Margin.Right);
-            double height = Math.Ceiling(list.ActualHeight + list.Margin.Top + list.Margin.Bottom);
-            Matrix toDevice = PresentationSource.FromVisual(w)?.CompositionTarget?.TransformToDevice ?? Matrix.Identity;
             ApplyTheme(w);
             IntPtr handle = new WindowInteropHelper(w).Handle;
-            Place(handle, at, (int)Math.Ceiling(width * toDevice.M11), (int)Math.Ceiling(height * toDevice.M22));
-            w.UpdateLayout();
-            Layout = Describe(handle, w, list, toDevice);
+            Layout = "";
+            int fits = 0;
+            void Fit(string reason)
+            {
+                if (fits++ >= 6 || window != w) return;
+                w.UpdateLayout();
+                DpiScale dpi = VisualTreeHelper.GetDpi(w);
+                list.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
+                Size size = list.DesiredSize; // natural size, including the list's margin
+                int width = (int)Math.Ceiling(size.Width * dpi.DpiScaleX), height = (int)Math.Ceiling(size.Height * dpi.DpiScaleY);
+                GetWindowRect(handle, out Rect r);
+                if (r.Right - r.Left != width || r.Bottom - r.Top != height) Place(handle, at, width, height);
+                Layout += reason + ": " + Describe(handle, w, list, dpi) + "\n";
+            }
+            fitCheck = () =>
+            {
+                GetWindowRect(handle, out Rect r);
+                DpiScale dpi = VisualTreeHelper.GetDpi(w);
+                int expected = (int)Math.Ceiling(list.DesiredSize.Height * dpi.DpiScaleY);
+                return r.Bottom - r.Top == expected ? null : $"window height {r.Bottom - r.Top}px, list {expected}px";
+            };
+            stretch = extra =>
+            {
+                GetWindowRect(handle, out Rect r);
+                SetWindowPos(handle, IntPtr.Zero, 0, 0, r.Right - r.Left, r.Bottom - r.Top + extra, NoMove | NoZOrder | NoActivate);
+            };
+            Fit("show");
+            w.SizeChanged += delegate { Fit("resized"); };
+            w.DpiChanged += delegate { Fit("dpi"); };
             SetForegroundWindow(handle);
             w.Activate();
         }
@@ -176,13 +208,13 @@ namespace ClaudeAutoPass
             SetWindowPos(handle, TopMost, x, y, width, height, NoActivate);
         }
 
-        /// <summary>Window, client and content sizes after layout (self-test log).</summary>
-        static string Describe(IntPtr handle, Window w, FrameworkElement list, Matrix toDevice)
+        /// <summary>Window, client and content sizes after layout (self-test log and diagnostics export).</summary>
+        static string Describe(IntPtr handle, Window w, FrameworkElement list, DpiScale dpi)
         {
             GetWindowRect(handle, out Rect r);
             GetClientRect(handle, out Rect c);
-            return $"scale={toDevice.M11:F2} window={r.Right - r.Left}x{r.Bottom - r.Top}px client={c.Right - c.Left}x{c.Bottom - c.Top}px "
-                + $"wpf={w.ActualWidth:F1}x{w.ActualHeight:F1} list={list.ActualWidth:F1}x{list.ActualHeight:F1} margin={list.Margin}";
+            return $"scale={dpi.DpiScaleX:F2} window={r.Right - r.Left}x{r.Bottom - r.Top}px client={c.Right - c.Left}x{c.Bottom - c.Top}px "
+                + $"wpf={w.ActualWidth:F1}x{w.ActualHeight:F1} list={list.DesiredSize.Width:F1}x{list.DesiredSize.Height:F1} (actual {list.ActualWidth:F1}x{list.ActualHeight:F1})";
         }
 
         static UIElement Separator()

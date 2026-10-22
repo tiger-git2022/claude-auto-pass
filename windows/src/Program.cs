@@ -158,17 +158,20 @@ namespace ClaudeAutoPass
                     {
                         TrayMenu.UseTheme(dark: step == 2);
                         menu.Show(entries, at);
+                        // The dark pass also checks that a window made too tall (as WPF did at 150%) shrinks back.
+                        if (step == 2) menu.StretchForTest(60);
                     }
                     else
                     {
                         string name = step == 1 ? "light" : "dark";
-                        log.AppendLine(name + ": open=" + menu.IsOpen + " " + menu.Layout);
+                        string misfit = menu.CheckFit();
+                        log.Append(name + ": open=" + menu.IsOpen + " fit=" + (misfit ?? "ok") + "\n" + menu.Layout);
                         using (var bmp = new Bitmap(460, 600))
                         {
                             CaptureScreen(bmp, at.X - 20, at.Y - 580);
                             bmp.Save(outputPrefix + "-" + name + ".png", System.Drawing.Imaging.ImageFormat.Png);
                         }
-                        if (menu.IsOpen) shots++;
+                        if (menu.IsOpen && misfit == null) shots++;
                         menu.Close();
                     }
                     step++;
