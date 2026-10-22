@@ -1,0 +1,3 @@
+<resources>
+    <string name="accessibility_description">仅在 Claude 官方 App 前台时读取按钮文字并自动点击审批。优先“本次会话中始终允许”，其次“允许一次”。用通知栏或快捷开关随时暂停。不会自动批准 Android 系统权限，不联网、不保存对话。</string>
+</resources>

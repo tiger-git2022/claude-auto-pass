@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" /><uses-permission android:name="android.permission.INTERNET" /><uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+    <queries><package android:name="com.anthropic.claude" /></queries>
+    <application android:theme="@style/Theme.ClaudeAutoPass"
+        android:label="Claude 自动审批" android:icon="@drawable/ic_approval"
+        android:allowBackup="false" android:supportsRtl="true">
+        <activity android:name=".MainActivity" android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+        <service android:name=".ApprovalService" android:exported="true"
+            android:label="Claude 自动审批" android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
+            <intent-filter><action android:name="android.accessibilityservice.AccessibilityService" /></intent-filter>
+            <meta-data android:name="android.accessibilityservice" android:resource="@xml/approval_service" />
+        </service>
+        <service android:name=".ApprovalTileService" android:exported="true"
+            android:label="Claude 自动审批" android:icon="@drawable/ic_approval"
+            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
+            <intent-filter><action android:name="android.service.quicksettings.action.QS_TILE" /></intent-filter>
+            <meta-data android:name="android.service.quicksettings.ACTIVE_TILE" android:value="true" />
+        </service>
+        <receiver android:name=".ToggleReceiver" android:exported="false" />
+    <provider android:name=".ApkProvider" android:authorities="com.personal.claudeautopass.apk" android:exported="false" android:grantUriPermissions="true" /></application>
+</manifest>

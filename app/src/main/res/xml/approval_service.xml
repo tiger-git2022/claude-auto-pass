@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<accessibility-service xmlns:android="http://schemas.android.com/apk/res/android"
+    android:accessibilityEventTypes="typeWindowStateChanged|typeWindowContentChanged|typeViewScrolled"
+    android:packageNames="com.anthropic.claude"
+    android:accessibilityFeedbackType="feedbackGeneric"
+    android:notificationTimeout="180"
+    android:canRetrieveWindowContent="true"
+    android:accessibilityFlags="flagReportViewIds"
+    android:isAccessibilityTool="false"
+    android:description="@string/accessibility_description"
+    android:settingsActivity="com.personal.claudeautopass.MainActivity" />
