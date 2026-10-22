@@ -68,6 +68,10 @@ jobs:
           bash gradlew assembleRelease -Papp.buildNumber=${{ steps.version.outputs.build }} --console=plain
           mkdir -p dist
           cp app/build/outputs/apk/release/app-release.apk dist/claude-auto-pass.apk
+          # Fail the release if any signature scheme is missing (vivo rejects APKs without the v1 certificate).
+          APKSIGNER=$(ls -d "$ANDROID_HOME"/build-tools/*/apksigner | sort -V | tail -n 1)
+          "$APKSIGNER" verify --verbose --print-certs dist/claude-auto-pass.apk | tee apksigner.txt
+          for scheme in 1 2 3; do grep -q "Verified using v$scheme scheme .*: true" apksigner.txt || { echo "Missing v$scheme signature"; exit 1; }; done
           cd dist && sha256sum claude-auto-pass.apk > SHA256SUMS.txt
       - uses: actions/upload-artifact@v7
         if: steps.version.outputs.skip != 'true'
