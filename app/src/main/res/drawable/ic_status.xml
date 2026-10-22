@@ -1,0 +1,11 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp" android:height="24dp"
+    android:viewportWidth="512" android:viewportHeight="512">
+    <!-- Monochrome companion to the supplied orange shield; outline keeps the check visible under system tint. -->
+    <path android:fillColor="#00000000" android:strokeColor="#FFFFFFFF"
+        android:strokeWidth="30" android:strokeLineCap="round" android:strokeLineJoin="round"
+        android:pathData="M256,51L428,126Q439,131 439,145L439,260C439,344 350,425 263,463Q256,466 249,463C162,425 73,344 73,260L73,145Q73,131 84,126Z" />
+    <path android:fillColor="#00000000" android:strokeColor="#FFFFFFFF"
+        android:strokeWidth="38" android:strokeLineCap="round" android:strokeLineJoin="round"
+        android:pathData="M156,235L250,319L365,204" />
+</vector>

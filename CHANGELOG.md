@@ -4,6 +4,8 @@
 
 ### 中文
 
+- 采用用户提供的橙色盾牌勾图标包，替换桌面、圆形桌面、通知栏和快捷开关图标。
+
 - 缩短通知栏标题，完整显示自动审批的开启、关闭和重连状态。
 
 - 修复后台稳定性：新增可退出的前台保活服务，保留反馈中断与系统重连前的开关状态。
@@ -18,6 +20,8 @@
 - GitHub Actions 自动测试、编译签名 APK，每次推送 main 自动发布新的 -tN 编号版本。
 
 ### English
+
+- Use the supplied orange shield and check icon pack for launcher, round launcher, notification, and Quick Settings icons.
 
 - Shorten notification titles so enable, disable, and reconnect states fit on screen.
 
