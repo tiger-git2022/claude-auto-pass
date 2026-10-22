@@ -101,7 +101,7 @@ namespace ClaudeAutoPass
             bool closing = false;
             w.Deactivated += delegate { if (!closing) { closing = true; w.Close(); } };
             w.Closing += delegate { closing = true; };
-            w.PreviewKeyDown += (s, k) => { if (k.Key == Key.Escape) w.Close(); };
+            w.PreviewKeyDown += (s, k) => OnKey(w, list, k);
             w.Closed += delegate { if (window == w) window = null; };
             // The tray app runs a WinForms message loop; this routes keyboard input (Esc) to the WPF window.
             System.Windows.Forms.Integration.ElementHost.EnableModelessKeyboardInterop(w);
@@ -112,6 +112,27 @@ namespace ClaudeAutoPass
             IntPtr handle = new WindowInteropHelper(w).Handle;
             SetForegroundWindow(handle);
             w.Activate();
+        }
+
+        /// <summary>Keyboard use like a native menu: arrows move between commands, Enter/Space runs one, Esc closes.</summary>
+        static void OnKey(Window w, Panel list, KeyEventArgs k)
+        {
+            if (k.Key == Key.Escape)
+            {
+                k.Handled = true;
+                w.Close();
+                return;
+            }
+            if (k.Key != Key.Down && k.Key != Key.Up && k.Key != Key.Home && k.Key != Key.End) return;
+            k.Handled = true;
+            var rows = new List<UIElement>();
+            foreach (UIElement child in list.Children) if (child.Focusable && child.IsEnabled) rows.Add(child);
+            if (rows.Count == 0) return;
+            int current = rows.FindIndex(r => r.IsKeyboardFocused);
+            int next = k.Key == Key.Home ? 0 : k.Key == Key.End ? rows.Count - 1
+                : current < 0 ? (k.Key == Key.Down ? 0 : rows.Count - 1)
+                : (current + (k.Key == Key.Down ? 1 : -1) + rows.Count) % rows.Count;
+            Keyboard.Focus(rows[next]);
         }
 
         static void ApplyTheme(FluentWindow w)
@@ -145,6 +166,18 @@ namespace ClaudeAutoPass
             return line;
         }
 
+        // Hover and keyboard focus share the highlight; pressing darkens it, like WPF-UI menu items.
+        static readonly Lazy<ControlTemplate> RowTemplate = new Lazy<ControlTemplate>(() => (ControlTemplate)System.Windows.Markup.XamlReader.Parse(
+            "<ControlTemplate TargetType='Button' xmlns='http://schemas.microsoft.com/winfx/2006/xaml/presentation' xmlns:x='http://schemas.microsoft.com/winfx/2006/xaml'>" +
+            "<Border x:Name='Bd' Background='Transparent' CornerRadius='4' Margin='4,1,4,1' Padding='12,7,16,7'>" +
+            "<ContentPresenter HorizontalAlignment='{TemplateBinding HorizontalContentAlignment}' VerticalAlignment='Center'/></Border>" +
+            "<ControlTemplate.Triggers>" +
+            "<Trigger Property='IsMouseOver' Value='True'><Setter TargetName='Bd' Property='Background' Value='{DynamicResource SubtleFillColorSecondaryBrush}'/></Trigger>" +
+            "<Trigger Property='IsKeyboardFocused' Value='True'><Setter TargetName='Bd' Property='Background' Value='{DynamicResource SubtleFillColorSecondaryBrush}'/></Trigger>" +
+            "<Trigger Property='IsPressed' Value='True'><Setter TargetName='Bd' Property='Background' Value='{DynamicResource SubtleFillColorTertiaryBrush}'/></Trigger>" +
+            "<Trigger Property='IsEnabled' Value='False'><Setter TargetName='Bd' Property='Background' Value='Transparent'/></Trigger>" +
+            "</ControlTemplate.Triggers></ControlTemplate>"));
+
         static UIElement Row(Entry e, Window owner)
         {
             var text = new System.Windows.Controls.TextBlock
@@ -162,25 +195,29 @@ namespace ClaudeAutoPass
             var content = new StackPanel { Orientation = Orientation.Horizontal };
             if (e.Icon != SymbolRegular.Empty) content.Children.Add(icon);
             content.Children.Add(text);
-            var row = new Border
+            // A real Button (restyled as a menu row), so the command is focusable, runs on Enter/Space and is
+            // exposed to screen readers and UI Automation with its name.
+            var row = new System.Windows.Controls.Button
             {
-                Child = content,
-                CornerRadius = new CornerRadius(4),
-                Margin = new Thickness(4, 1, 4, 1),
-                Padding = new Thickness(12, 7, 16, 7),
-                Background = Brushes.Transparent,
+                Content = content,
+                // An empty style plus OverridesDefaultStyle keeps WPF-UI's own button look (borders, min size) out.
+                Style = new Style(typeof(System.Windows.Controls.Button)),
+                OverridesDefaultStyle = true,
+                Template = RowTemplate.Value,
+                IsEnabled = e.Enabled && e.Click != null,
+                FocusVisualStyle = null,
+                HorizontalContentAlignment = HorizontalAlignment.Left,
             };
-            if (!e.Enabled || e.Click == null) return row;
-
-            row.MouseEnter += delegate { row.SetResourceReference(Border.BackgroundProperty, "SubtleFillColorSecondaryBrush"); };
-            row.MouseLeave += delegate { row.Background = Brushes.Transparent; };
-            row.MouseLeftButtonDown += (s, m) => { row.SetResourceReference(Border.BackgroundProperty, "SubtleFillColorTertiaryBrush"); m.Handled = true; };
-            row.MouseLeftButtonUp += (s, m) =>
+            System.Windows.Automation.AutomationProperties.SetName(row, e.Text);
+            if (row.IsEnabled)
             {
-                m.Handled = true;
-                owner.Close();
-                e.Click();
-            };
+                Action click = e.Click;
+                row.Click += delegate
+                {
+                    owner.Close();
+                    click();
+                };
+            }
             return row;
         }
 

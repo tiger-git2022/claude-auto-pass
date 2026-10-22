@@ -165,8 +165,7 @@ namespace ClaudeAutoPass
                         log.AppendLine(name + ": open=" + menu.IsOpen);
                         using (var bmp = new Bitmap(460, 600))
                         {
-                            using (Graphics g = Graphics.FromImage(bmp))
-                                g.CopyFromScreen(at.X - 20, at.Y - 580, 0, 0, bmp.Size, CopyPixelOperation.SourceCopy | CopyPixelOperation.CaptureBlt);
+                            CaptureScreen(bmp, at.X - 20, at.Y - 580);
                             bmp.Save(outputPrefix + "-" + name + ".png", System.Drawing.Imaging.ImageFormat.Png);
                         }
                         if (menu.IsOpen) shots++;
@@ -191,6 +190,31 @@ namespace ClaudeAutoPass
             Application.Run(context);
             File.WriteAllText(outputPrefix + ".txt", log.ToString());
             return code;
+        }
+
+        [System.Runtime.InteropServices.DllImport("user32.dll")]
+        static extern IntPtr GetDC(IntPtr hWnd);
+
+        [System.Runtime.InteropServices.DllImport("user32.dll")]
+        static extern int ReleaseDC(IntPtr hWnd, IntPtr hdc);
+
+        [System.Runtime.InteropServices.DllImport("gdi32.dll")]
+        static extern bool BitBlt(IntPtr dest, int x, int y, int width, int height, IntPtr source, int sx, int sy, int rop);
+
+        /// <summary>Screen copy that includes layered and DWM-composited windows (SRCCOPY | CAPTUREBLT).</summary>
+        static void CaptureScreen(Bitmap bmp, int x, int y)
+        {
+            IntPtr screen = GetDC(IntPtr.Zero);
+            try
+            {
+                using (Graphics g = Graphics.FromImage(bmp))
+                {
+                    IntPtr hdc = g.GetHdc();
+                    try { BitBlt(hdc, 0, 0, bmp.Width, bmp.Height, screen, x, y, 0x00CC0020 | 0x40000000); }
+                    finally { g.ReleaseHdc(hdc); }
+                }
+            }
+            finally { ReleaseDC(IntPtr.Zero, screen); }
         }
 
         static System.Collections.Generic.List<TrayMenu.Entry> SampleEntries()
