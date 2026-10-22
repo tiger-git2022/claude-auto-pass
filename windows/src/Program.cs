@@ -13,6 +13,11 @@ namespace ClaudeAutoPass
         [STAThread]
         static int Main(string[] args)
         {
+            // Self-tests write crashes next to their output so CI can print them; the tray app uses %AppData%.
+            string crashLog = args.Length >= 2 && args[0].StartsWith("--self-test", StringComparison.Ordinal)
+                ? args[args.Length - 1] + ".crash.txt" : null;
+            AppDomain.CurrentDomain.UnhandledException += (s, e) => WriteCrash(crashLog, e.ExceptionObject as Exception);
+            Application.ThreadException += (s, e) => WriteCrash(crashLog, e.Exception);
             if (args.Length >= 2 && args[0] == "--self-test-form") return SelfTest.Form(args[1]);
             if (args.Length >= 4 && args[0] == "--self-test-process") return SelfTest.Process(args[1], int.Parse(args[2]), args[3]);
 
@@ -38,6 +43,16 @@ namespace ClaudeAutoPass
                 finally { mutex.ReleaseMutex(); }
             }
             return 0;
+        }
+
+        static void WriteCrash(string path, Exception ex)
+        {
+            try
+            {
+                path = path ?? Path.Combine(AppInfo.DataDir, "crash.txt");
+                File.AppendAllText(path, DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + " " + AppInfo.Version + "\r\n" + ex + "\r\n\r\n");
+            }
+            catch (Exception) { }
         }
     }
 

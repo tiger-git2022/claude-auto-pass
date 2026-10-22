@@ -60,6 +60,7 @@ jobs:
           $out = "$env:RUNNER_TEMP/selftest-form.txt"
           $p = Start-Process dist/claude-auto-pass.exe -ArgumentList '--self-test-form', $out -Wait -PassThru
           if (Test-Path $out) { Get-Content $out }
+          if (Test-Path "$out.crash.txt") { Get-Content "$out.crash.txt" }
           if ($p.ExitCode -ne 0) { Write-Error "WinForms self-test failed ($($p.ExitCode))"; exit 1 }
       - name: Self-test with Edge (Chromium, like Claude Desktop)
         if: steps.version.outputs.skip != 'true'
@@ -79,6 +80,7 @@ jobs:
             $titles = (Get-Process msedge -ErrorAction SilentlyContinue | Where-Object MainWindowTitle | ForEach-Object MainWindowTitle) -join ', '
             Write-Host "== Edge $name : exit=$($p.ExitCode) titles=[$titles]"
             if (Test-Path $out) { Get-Content $out | Select-Object -First 60 | ForEach-Object { Write-Host $_ } }
+            if (Test-Path "$out.crash.txt") { Get-Content "$out.crash.txt" | ForEach-Object { Write-Host $_ } }
             return ($p.ExitCode -eq 0 -and $titles -match 'CLICKED-SESSION')
           }
           # Informational: does Chromium build its accessibility tree for a UI Automation client on its own?
