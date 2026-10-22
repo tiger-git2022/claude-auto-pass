@@ -13,12 +13,14 @@ namespace ClaudeAutoPass
         [STAThread]
         static int Main(string[] args)
         {
+            EmbeddedAssemblies.Register();
             // Self-tests write crashes next to their output so CI can print them; the tray app uses %AppData%.
             string crashLog = args.Length >= 2 && args[0].StartsWith("--self-test", StringComparison.Ordinal)
                 ? args[args.Length - 1] + ".crash.txt" : null;
             AppDomain.CurrentDomain.UnhandledException += (s, e) => WriteCrash(crashLog, e.ExceptionObject as Exception);
             Application.ThreadException += (s, e) => WriteCrash(crashLog, e.Exception);
             if (args.Length >= 2 && args[0] == "--self-test-form") return SelfTest.Form(args[1]);
+            if (args.Length >= 2 && args[0] == "--self-test-menu") return SelfTest.Menu(args[1]);
             if (args.Length >= 4 && args[0] == "--self-test-process") return SelfTest.Process(args[1], int.Parse(args[2]), args[3]);
 
             bool updated = args.Contains("--updated");
@@ -75,7 +77,7 @@ namespace ClaudeAutoPass
                     if (result.Clicked != Kind.None) break;
                     Thread.Sleep(500);
                 }
-                code = result?.Clicked == Kind.Session ? 0 : result?.Clicked == Kind.Once ? 2 : 1;
+                code = result?.Clicked == Kind.Session ? 0 : result?.Clicked == Kind.Once ? 2 : result?.Clicked == Kind.LocalProject ? 3 : 1;
                 log = $"clicked={result?.Clicked} label=\"{result?.Label}\" windows={result?.ClaudeWindows} buttons={result?.Buttons} after={watch.Elapsed.TotalSeconds:F1}s\n\n"
                       + scanner.Diagnose();
             });
@@ -133,6 +135,82 @@ namespace ClaudeAutoPass
             Application.Run(form);
             File.WriteAllText(output, log.ToString());
             return code;
+        }
+
+        /// <summary>Opens the tray menu in light and dark theme and saves screenshots, so CI shows how it looks.</summary>
+        public static int Menu(string outputPrefix)
+        {
+            Application.EnableVisualStyles();
+            int code = 1;
+            var log = new System.Text.StringBuilder();
+            var context = new ApplicationContext();
+            var timer = new System.Windows.Forms.Timer { Interval = 1500 };
+            TrayMenu.InitTheme();
+            var menu = new TrayMenu();
+            var entries = SampleEntries();
+            int step = 0, shots = 0;
+            Point at = new Point(40, 620);
+            timer.Tick += (s, e) =>
+            {
+                try
+                {
+                    if (step == 0 || step == 2)
+                    {
+                        TrayMenu.UseTheme(dark: step == 2);
+                        menu.Show(entries, at);
+                    }
+                    else
+                    {
+                        string name = step == 1 ? "light" : "dark";
+                        log.AppendLine(name + ": open=" + menu.IsOpen);
+                        using (var bmp = new Bitmap(460, 600))
+                        {
+                            using (Graphics g = Graphics.FromImage(bmp))
+                                g.CopyFromScreen(at.X - 20, at.Y - 580, 0, 0, bmp.Size, CopyPixelOperation.SourceCopy | CopyPixelOperation.CaptureBlt);
+                            bmp.Save(outputPrefix + "-" + name + ".png", System.Drawing.Imaging.ImageFormat.Png);
+                        }
+                        if (menu.IsOpen) shots++;
+                        menu.Close();
+                    }
+                    step++;
+                    if (step == 4)
+                    {
+                        timer.Stop();
+                        code = shots == 2 ? 0 : 1;
+                        context.ExitThread();
+                    }
+                }
+                catch (Exception ex)
+                {
+                    log.AppendLine(ex.ToString());
+                    timer.Stop();
+                    context.ExitThread();
+                }
+            };
+            timer.Start();
+            Application.Run(context);
+            File.WriteAllText(outputPrefix + ".txt", log.ToString());
+            return code;
+        }
+
+        static System.Collections.Generic.List<TrayMenu.Entry> SampleEntries()
+        {
+            Action none = () => { };
+            return new System.Collections.Generic.List<TrayMenu.Entry>
+            {
+                new TrayMenu.Entry { Text = "状态：已开启 · 监视中", Icon = Wpf.Ui.Controls.SymbolRegular.ShieldCheckmark24, Enabled = false },
+                new TrayMenu.Entry { Text = "上次：本次会话中始终允许 · 19:30", Icon = Wpf.Ui.Controls.SymbolRegular.History24, Enabled = false },
+                new TrayMenu.Entry { Separator = true },
+                new TrayMenu.Entry { Text = "关闭自动审批", Bold = true, Icon = Wpf.Ui.Controls.SymbolRegular.Pause24, Click = none },
+                new TrayMenu.Entry { Text = "开机自动启动", Icon = Wpf.Ui.Controls.SymbolRegular.CheckboxChecked24, Click = none },
+                new TrayMenu.Entry { Separator = true },
+                new TrayMenu.Entry { Text = "导出按钮文字（诊断）…", Icon = Wpf.Ui.Controls.SymbolRegular.DocumentSearch24, Click = none },
+                new TrayMenu.Entry { Text = "以辅助功能模式重启 Claude…", Icon = Wpf.Ui.Controls.SymbolRegular.ArrowClockwise24, Click = none },
+                new TrayMenu.Entry { Text = "检查更新…", Icon = Wpf.Ui.Controls.SymbolRegular.ArrowSync24, Click = none },
+                new TrayMenu.Entry { Text = "项目主页", Icon = Wpf.Ui.Controls.SymbolRegular.Open24, Click = none },
+                new TrayMenu.Entry { Separator = true },
+                new TrayMenu.Entry { Text = "退出", Icon = Wpf.Ui.Controls.SymbolRegular.Power24, Click = none },
+            };
         }
 
         static Button Button(string text, Action onClick)

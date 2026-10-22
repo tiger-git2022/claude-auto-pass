@@ -14,7 +14,7 @@
     <GenerateDocumentationFile>false</GenerateDocumentationFile>
     <DebugType>embedded</DebugType>
     <!-- Bump BaseVersion together with windows/CHANGELOG.md; CI passes BuildNumber (the N in win-vX.Y.Z-tN). -->
-    <BaseVersion>1.0.0</BaseVersion>
+    <BaseVersion>1.1.0</BaseVersion>
     <BuildNumber Condition="'$(BuildNumber)' == ''">0</BuildNumber>
     <Version>$(BaseVersion).$(BuildNumber)</Version>
     <FileVersion>$(BaseVersion).$(BuildNumber)</FileVersion>
@@ -33,9 +33,17 @@
     <Reference Include="System.Drawing" />
     <Reference Include="System.Web.Extensions" />
     <Reference Include="System.Net.Http" />
+    <!-- WPF hosts the tray menu (WPF-UI style, same as EHUploader); no XAML, so plain references are enough. -->
+    <Reference Include="PresentationCore" />
+    <Reference Include="PresentationFramework" />
+    <Reference Include="WindowsBase" />
+    <Reference Include="System.Xaml" />
+    <Reference Include="WindowsFormsIntegration" />
     <PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies" Version="1.0.3" PrivateAssets="all" />
     <!-- Type library for the Windows UI Automation COM API (UIA3); embedded, so no extra DLL ships. -->
     <PackageReference Include="Interop.UIAutomationClient" Version="10.19041.0" ExcludeAssets="runtime" PrivateAssets="all" />
+    <!-- Fluent controls for the tray menu. Its DLLs are compressed into the exe (see EmbedLibraries), so it stays one file. -->
+    <PackageReference Include="WPF-UI" Version="4.3.0" />
   </ItemGroup>
   <!-- Csc reads ReferencePathWithRefAssemblies, so mark the interop assembly there for /link (embedding). -->
   <Target Name="EmbedUiaInterop" BeforeTargets="CoreCompile" AfterTargets="FindReferenceAssembliesForReferences">
@@ -43,6 +51,50 @@
       <ReferencePathWithRefAssemblies Condition="'%(FileName)' == 'Interop.UIAutomationClient'">
         <EmbedInteropTypes>true</EmbedInteropTypes>
       </ReferencePathWithRefAssemblies>
+    </ItemGroup>
+  </Target>
+  <!--
+    Keep the release a single exe (the updater swaps exactly one file): every copy-local DLL is deflated into
+    the exe as "lib/<name>.dll" and loaded by EmbeddedAssemblies on demand instead of being copied next to it.
+  -->
+  <UsingTask TaskName="DeflateFiles" TaskFactory="RoslynCodeTaskFactory" AssemblyFile="$(MSBuildToolsPath)\Microsoft.Build.Tasks.Core.dll">
+    <ParameterGroup>
+      <Files ParameterType="Microsoft.Build.Framework.ITaskItem[]" Required="true" />
+      <OutputDir ParameterType="System.String" Required="true" />
+      <Outputs ParameterType="Microsoft.Build.Framework.ITaskItem[]" Output="true" />
+    </ParameterGroup>
+    <Task>
+      <Using Namespace="System.IO" />
+      <Using Namespace="System.IO.Compression" />
+      <Code Type="Fragment" Language="cs"><![CDATA[
+        Directory.CreateDirectory(OutputDir);
+        var list = new System.Collections.Generic.List<Microsoft.Build.Framework.ITaskItem>();
+        foreach (var file in Files)
+        {
+          string name = Path.GetFileName(file.ItemSpec);
+          string target = Path.Combine(OutputDir, name + ".deflate");
+          using (var input = File.OpenRead(file.ItemSpec))
+          using (var output = File.Create(target))
+          using (var deflate = new DeflateStream(output, CompressionLevel.Optimal))
+            input.CopyTo(deflate);
+          var item = new Microsoft.Build.Utilities.TaskItem(target);
+          item.SetMetadata("LogicalName", "lib/" + name);
+          list.Add(item);
+        }
+        Outputs = list.ToArray();
+      ]]></Code>
+    </Task>
+  </UsingTask>
+  <Target Name="EmbedLibraries" AfterTargets="ResolveAssemblyReferences" BeforeTargets="PrepareResources">
+    <ItemGroup>
+      <_LibraryDll Include="@(ReferenceCopyLocalPaths)" Condition="'%(Extension)' == '.dll'" />
+    </ItemGroup>
+    <DeflateFiles Files="@(_LibraryDll)" OutputDir="$(IntermediateOutputPath)lib">
+      <Output TaskParameter="Outputs" ItemName="_DeflatedLibrary" />
+    </DeflateFiles>
+    <ItemGroup>
+      <EmbeddedResource Include="@(_DeflatedLibrary)" WithCulture="false" Type="Non-Resx" />
+      <ReferenceCopyLocalPaths Remove="@(ReferenceCopyLocalPaths)" />
     </ItemGroup>
   </Target>
 </Project>

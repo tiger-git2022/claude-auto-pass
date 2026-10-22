@@ -1,5 +1,21 @@
 # Windows 版更新记录 / Windows Changelog
 
+## 1.1.0
+
+### 中文
+
+- 支持 Claude Desktop 代码页的权限卡片：卡片上只有「拒绝」和「始终允许，保存到本地项目设置」时，点后者（只写入该项目的 `.claude/settings.local.json`）。有「允许一次」「本次会话中允许」时仍优先点它们；「保存到用户设置」「保存到项目设置」这类更大范围的授权依然不点。
+- 右键菜单改成和 EH 上传助手一致的 WPF-UI Fluent 风格：圆角、Fluent 图标、跟随系统深浅色；Windows 11 上是亚克力半透明背景，Windows 10 为普通背景。
+- 依赖库压缩进 exe，仍然是单个文件。
+- CI 新增：模拟代码页卡片的 Edge 实测，以及右键菜单深浅色截图。
+
+### English
+
+- Supports Claude Desktop's Code permission cards: when a card offers only “Deny” and “Always allow, save to local project settings”, the latter is pressed (it only writes that project's `.claude/settings.local.json`). “Allow once” and session-wide choices still come first; wider grants such as “save to user settings” or “save to project settings” are never pressed.
+- The right-click menu now uses the same WPF-UI Fluent style as EH Uploader: rounded corners, Fluent icons, light or dark with Windows, and an acrylic backdrop on Windows 11 (plain background on Windows 10).
+- Libraries are compressed into the exe, so it is still a single file.
+- CI adds an Edge test for the Code permission card and light/dark screenshots of the menu.
+
 ## 1.0.0
 
 ### 中文

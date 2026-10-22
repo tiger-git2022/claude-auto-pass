@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.Drawing;
 using System.Drawing.Imaging;
@@ -8,6 +9,7 @@ using System.Reflection;
 using System.Threading;
 using System.Windows.Forms;
 using Microsoft.Win32;
+using SymbolRegular = Wpf.Ui.Controls.SymbolRegular;
 
 namespace ClaudeAutoPass
 {
@@ -20,11 +22,8 @@ namespace ClaudeAutoPass
         readonly Settings settings = new Settings();
         readonly NotifyIcon tray = new NotifyIcon();
         readonly Icon iconOn, iconOff;
-        readonly ToolStripMenuItem statusItem = new ToolStripMenuItem { Enabled = false };
-        readonly ToolStripMenuItem lastItem = new ToolStripMenuItem { Enabled = false };
-        readonly ToolStripMenuItem enabledItem = new ToolStripMenuItem("开启自动审批");
-        readonly ToolStripMenuItem autostartItem = new ToolStripMenuItem("开机自动启动");
-        readonly ToolStripMenuItem updateItem = new ToolStripMenuItem("检查更新…");
+        readonly TrayMenu menu = new TrayMenu();
+        string updateProgress;   // non-null while an update downloads
         readonly SynchronizationContext ui;
         readonly Thread worker;
         volatile bool running = true, locked;
@@ -40,24 +39,10 @@ namespace ClaudeAutoPass
             if (firstRun) settings.Enabled = true;
             try { Autostart.Refresh(); } catch (Exception) { }
 
-            enabledItem.Click += (s, e) => SetEnabled(!settings.Enabled);
-            autostartItem.Click += (s, e) => ToggleAutostart();
-            updateItem.Click += async (s, e) => await CheckUpdates();
-            var menu = new ContextMenuStrip();
-            menu.Items.AddRange(new ToolStripItem[]
-            {
-                statusItem, lastItem, new ToolStripSeparator(),
-                enabledItem, autostartItem, new ToolStripSeparator(),
-                new ToolStripMenuItem("导出按钮文字（诊断）…", null, (s, e) => Diagnose()),
-                new ToolStripMenuItem("以辅助功能模式重启 Claude…", null, (s, e) => RestartClaude()),
-                updateItem,
-                new ToolStripMenuItem("项目主页", null, (s, e) => Open("https://github.com/" + AppInfo.Repo)),
-                new ToolStripSeparator(),
-                new ToolStripMenuItem("退出", null, (s, e) => ExitThread()),
-            });
-            menu.Opening += (s, e) => Refresh();
-            tray.ContextMenuStrip = menu;
+            TrayMenu.InitTheme();
+            SystemEvents.UserPreferenceChanged += OnUserPreferenceChanged;
             tray.MouseClick += (s, e) => { if (e.Button == MouseButtons.Left) SetEnabled(!settings.Enabled); };
+            tray.MouseUp += (s, e) => { if (e.Button == MouseButtons.Right) ShowMenu(); };
             tray.Visible = true;
             Refresh();
 
@@ -70,6 +55,48 @@ namespace ClaudeAutoPass
                 tray.ShowBalloonTip(5000, "Claude 自动审批 " + AppInfo.Version,
                     "已在托盘运行。左键单击图标开启/关闭，右键查看更多选项。", ToolTipIcon.Info);
         }
+
+        void OnUserPreferenceChanged(object sender, UserPreferenceChangedEventArgs e)
+        {
+            if (e.Category == UserPreferenceCategory.General || e.Category == UserPreferenceCategory.Color || e.Category == UserPreferenceCategory.VisualStyle)
+                ui.Post(_ => TrayMenu.FollowSystemTheme(), null);
+        }
+
+        /// <summary>Right-click menu: WPF-UI Fluent style shared with EHUploader and ThaiTranslator, acrylic on Windows 11.</summary>
+        void ShowMenu()
+        {
+            Refresh();
+            menu.Show(MenuEntries(), Cursor.Position);
+        }
+
+        internal List<TrayMenu.Entry> MenuEntries()
+        {
+            bool on = settings.Enabled;
+            bool autostart;
+            try { autostart = Autostart.Enabled; } catch (Exception) { autostart = false; }
+            string last = settings.LastAction;
+            SymbolRegular stateIcon = !on ? SymbolRegular.ShieldDismiss24 : locked ? SymbolRegular.LockClosed24 : claudeWindows == 0 ? SymbolRegular.Search24 : SymbolRegular.ShieldCheckmark24;
+            return new List<TrayMenu.Entry>
+            {
+                new TrayMenu.Entry { Text = "状态：" + StateText(), Icon = stateIcon, Enabled = false },
+                new TrayMenu.Entry { Text = "上次：" + (string.IsNullOrEmpty(last) ? "暂无" : Shorten(last, 48)), Icon = SymbolRegular.History24, Enabled = false },
+                new TrayMenu.Entry { Separator = true },
+                new TrayMenu.Entry { Text = on ? "关闭自动审批" : "开启自动审批", Bold = true, Icon = on ? SymbolRegular.Pause24 : SymbolRegular.Play24, Click = Later(() => SetEnabled(!on)) },
+                new TrayMenu.Entry { Text = "开机自动启动", Icon = autostart ? SymbolRegular.CheckboxChecked24 : SymbolRegular.CheckboxUnchecked24, Click = Later(ToggleAutostart) },
+                new TrayMenu.Entry { Separator = true },
+                new TrayMenu.Entry { Text = "导出按钮文字（诊断）…", Icon = SymbolRegular.DocumentSearch24, Click = Later(Diagnose) },
+                new TrayMenu.Entry { Text = "以辅助功能模式重启 Claude…", Icon = SymbolRegular.ArrowClockwise24, Click = Later(RestartClaude) },
+                new TrayMenu.Entry { Text = updateProgress ?? "检查更新…", Icon = SymbolRegular.ArrowSync24, Enabled = updateProgress == null, Click = Later(async () => await CheckUpdates()) },
+                new TrayMenu.Entry { Text = "项目主页", Icon = SymbolRegular.Open24, Click = Later(() => Open("https://github.com/" + AppInfo.Repo)) },
+                new TrayMenu.Entry { Separator = true },
+                new TrayMenu.Entry { Text = "退出", Icon = SymbolRegular.Power24, Click = Later(ExitThread) },
+            };
+        }
+
+        /// <summary>Runs a menu action after the menu has closed, so dialogs and exit don't fight the open popup.</summary>
+        Action Later(Action action) => () => ui.Post(_ => action(), null);
+
+        string StateText() => !settings.Enabled ? "已关闭" : locked ? "已暂停（锁屏）" : claudeWindows == 0 ? "已开启 · 未找到 Claude" : scanError != null ? "已开启 · 重试中" : "已开启 · 监视中";
 
         void OnSessionSwitch(object sender, SessionSwitchEventArgs e)
         {
@@ -113,12 +140,7 @@ namespace ClaudeAutoPass
         void Refresh()
         {
             bool on = settings.Enabled;
-            string state = !on ? "已关闭" : locked ? "已暂停（锁屏）" : claudeWindows == 0 ? "已开启 · 未找到 Claude" : scanError != null ? "已开启 · 重试中" : "已开启 · 监视中";
-            statusItem.Text = "状态：" + state;
-            string last = settings.LastAction;
-            lastItem.Text = "上次：" + (string.IsNullOrEmpty(last) ? "暂无" : Shorten(last, 60));
-            enabledItem.Checked = on;
-            try { autostartItem.Checked = Autostart.Enabled; } catch (Exception) { autostartItem.Checked = false; }
+            string state = StateText();
             tray.Icon = on ? iconOn : iconOff;
             tray.Text = Shorten("Claude 自动审批：" + state, 63);
         }
@@ -180,7 +202,7 @@ namespace ClaudeAutoPass
 
         async System.Threading.Tasks.Task CheckUpdates()
         {
-            updateItem.Enabled = false;
+            updateProgress = "正在检查更新…";
             try
             {
                 Release release = await Updater.CheckAsync();
@@ -192,8 +214,8 @@ namespace ClaudeAutoPass
                 string notes = Shorten(release.Notes ?? "", 1500);
                 if (MessageBox.Show($"发现新版本 {release.Tag}（当前 {AppInfo.Version}）。\n\n{notes}\n\n现在下载并更新吗？",
                         "检查更新", MessageBoxButtons.YesNo, MessageBoxIcon.Question) != DialogResult.Yes) return;
-                updateItem.Text = "正在下载… 0%";
-                var progress = new Progress<int>(p => updateItem.Text = "正在下载… " + p + "%");
+                updateProgress = "正在下载… 0%";
+                var progress = new Progress<int>(p => updateProgress = "正在下载… " + p + "%");
                 string file = await Updater.DownloadAsync(release, progress);
                 Updater.Install(file);
                 ExitThread();
@@ -209,8 +231,7 @@ namespace ClaudeAutoPass
             }
             finally
             {
-                updateItem.Text = "检查更新…";
-                updateItem.Enabled = true;
+                updateProgress = null;
             }
         }
 
@@ -252,6 +273,8 @@ namespace ClaudeAutoPass
         {
             running = false;
             SystemEvents.SessionSwitch -= OnSessionSwitch;
+            SystemEvents.UserPreferenceChanged -= OnUserPreferenceChanged;
+            menu.Close();
             tray.Visible = false;
             tray.Dispose();
             base.ExitThreadCore();

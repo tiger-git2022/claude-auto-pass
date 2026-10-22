@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="zh">
+<head><meta charset="utf-8"><title>auto-pass-test-local</title></head>
+<body>
+  <!-- Mimics a Claude Desktop Code permission card: Deny, and a split button whose main part saves to local project settings. -->
+  <h1>允许 Claude 运行 列出本块区域?</h1>
+  <div role="dialog" aria-label="Permission">
+    <pre>ls</pre>
+    <div>
+      <button onclick="document.title='CLICKED-DENY'">拒绝</button>
+      <span>
+        <button aria-label="始终允许 , 保存到本地项目设置" onclick="document.title='CLICKED-LOCAL'">始终允许 <kbd>Ctrl</kbd><kbd>Shift</kbd><kbd>⏎</kbd></button>
+        <button aria-label="更多允许选项" onclick="document.title='CLICKED-MORE'">⌄</button>
+      </span>
+    </div>
+  </div>
+  <p><button aria-label="始终允许 , 保存到用户设置" onclick="document.title='CLICKED-USER'">始终允许（用户设置）</button></p>
+</body>
+</html>
