@@ -137,6 +137,8 @@ public final class MainActivity extends androidx.appcompat.app.AppCompatActivity
         if (!downloadedVersion.isEmpty() && !Updates.newer(downloadedVersion, version)) {
             Control.prefs(this).edit().remove("download_done").apply();
         }
+        String pending = Control.prefs(this).getString("download_pending", "");
+        if (!pending.isEmpty() && !Updates.newer(pending, version)) Control.prefs(this).edit().remove("download_pending").apply();
         Updates.Progress p = Updates.PROGRESS;
         if (p.running) {
             installButton.setVisibility(View.GONE);
