@@ -4,6 +4,7 @@
 
 ### 中文
 
+- 修复应用内更新卡在“下载更新 · 0.0 MB”：改由 App 自己下载 APK，不再依赖部分系统（如 vivo OriginOS）上会一直排队的系统下载管理器；显示下载百分比，失败时给出原因，旧版本卡住的下载会自动清掉。
 - 修复 vivo OriginOS 通知栏和状态栏里图标被拉宽：图标的有效区域改为正方形，系统不再把偏高的盾牌拉成方形。
 - 移除通知右侧多余的大图标，保留系统通知图标和开启、关闭、退出操作。
 
@@ -24,6 +25,7 @@
 
 ### English
 
+- Fixed in-app updates stuck at “Downloading · 0.0 MB”: the app now downloads the APK itself instead of the system DownloadManager, which some ROMs (such as vivo OriginOS) leave queued forever; shows a percentage, reports why a download failed, and clears a stuck download from older versions.
 - Fix the icon looking stretched in the vivo OriginOS status bar and notifications: the icon's visible bounds are now square, so the system no longer stretches the taller shield.
 - Remove the redundant large icon on the right of the notification, retaining the system notification icon and controls.
 

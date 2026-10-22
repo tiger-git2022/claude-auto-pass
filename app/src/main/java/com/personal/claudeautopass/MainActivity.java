@@ -121,8 +121,8 @@ public final class MainActivity extends androidx.appcompat.app.AppCompatActivity
                     if (newer) new com.google.android.material.dialog.MaterialAlertDialogBuilder(this).setTitle("新版本 " + release.version)
                         .setMessage(release.notes).setNegativeButton("稍后", null)
                         .setPositiveButton("下载更新", (dialog, which) -> {
-                            try { Updates.download(this, release); refreshDownload(); }
-                            catch (Exception e) { updateStatus.setText("下载失败：" + e.getMessage()); }
+                            if (!Updates.download(this, release)) toast("更新正在下载");
+                            refreshDownload();
                         }).show();
                 });
             } catch (Exception e) {
@@ -132,23 +132,28 @@ public final class MainActivity extends androidx.appcompat.app.AppCompatActivity
     }
     private void refreshDownload() {
         if (verifying || !checkButton.isEnabled()) return;
+        Updates.forgetSystemDownload(this); // Clears a download stuck in DownloadManager from older versions.
         String downloadedVersion = Control.prefs(this).getString("download_version", "");
         if (!downloadedVersion.isEmpty() && !Updates.newer(downloadedVersion, version)) {
-            Control.prefs(this).edit().remove("download_id").apply();
+            Control.prefs(this).edit().remove("download_done").apply();
         }
-        Updates.Progress p = Updates.progress(this);
-        if (p == null) { progress.setVisibility(View.GONE); installButton.setVisibility(View.GONE); return; }
-        boolean done = p.status == DownloadManager.STATUS_SUCCESSFUL;
+        Updates.Progress p = Updates.PROGRESS;
+        if (p.running) {
+            installButton.setVisibility(View.GONE);
+            progress.setVisibility(View.VISIBLE);
+            long total = p.total, done = p.downloaded;
+            int percent = total <= 0 ? 0 : (int) Math.min(100, done * 100 / total);
+            progress.setIndeterminate(total <= 0);
+            if (total > 0) progress.setProgress(percent);
+            updateStatus.setText("下载更新 · " + (total <= 0 ? String.format(Locale.ROOT, "%.1f MB", done / 1048576.0)
+                : percent + "%（" + String.format(Locale.ROOT, "%.1f / %.1f MB", done / 1048576.0, total / 1048576.0) + "）"));
+            return;
+        }
+        progress.setVisibility(View.GONE);
+        boolean done = Updates.downloaded(this);
         installButton.setVisibility(done ? View.VISIBLE : View.GONE);
-        if (done) { progress.setVisibility(View.GONE); updateStatus.setText("更新下载完成，点击安装"); return; }
-        if (p.status == DownloadManager.STATUS_FAILED) {
-            progress.setVisibility(View.GONE); updateStatus.setText("更新下载失败（" + p.reason + "），可重新检查并下载"); return;
-        }
-        progress.setVisibility(View.VISIBLE); progress.setIndeterminate(p.total <= 0);
-        int percent = p.total <= 0 ? 0 : (int) Math.min(100, p.downloaded * 100 / p.total);
-        if (p.total > 0) progress.setProgress(percent);
-        updateStatus.setText((p.status == DownloadManager.STATUS_PAUSED ? "等待网络 · " : "下载更新 · ")
-            + (p.total <= 0 ? String.format(Locale.ROOT, "%.1f MB", p.downloaded / 1048576.0) : percent + "%"));
+        if (done) updateStatus.setText("更新下载完成，点击安装");
+        else if (p.error != null) updateStatus.setText("下载失败：" + p.error + "。可重新检查更新，或打开 GitHub 仓库手动下载");
     }
     private void installUpdate() {
         if (verifying) return;

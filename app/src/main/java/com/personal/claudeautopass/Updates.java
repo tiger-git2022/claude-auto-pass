@@ -2,7 +2,6 @@ package com.personal.claudeautopass;
 
 import android.app.DownloadManager;
 import android.content.*;
-import android.database.Cursor;
 import android.net.Uri;
 import android.os.Environment;
 import org.json.*;
@@ -59,39 +58,87 @@ final class Updates {
     }
     static int[] versionParts(String version) { return Versioning.parts(version); }
     static boolean newer(String remote, String local) { return Versioning.newer(remote, local); }
-    static void download(Context c, Release release) throws IOException {
-        File folder = new File(c.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS), "updates");
-        if (!folder.isDirectory() && !folder.mkdirs()) throw new IOException("无法创建下载目录");
-        // A unique file avoids overwriting an APK that a package installer may still be reading.
-        String fileName = "update-" + System.currentTimeMillis() + ".apk";
-        DownloadManager.Request request = new DownloadManager.Request(Uri.parse(release.url))
-            .setTitle("Claude 自动审批 " + release.version).setDescription("正在下载更新")
-            .setMimeType("application/vnd.android.package-archive")
-            .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
-            .setDestinationInExternalFilesDir(c, Environment.DIRECTORY_DOWNLOADS, "updates/" + fileName);
-        long oldId = Control.prefs(c).getLong("download_id", -1);
-        if (oldId != -1) c.getSystemService(DownloadManager.class).remove(oldId);
-        long id = c.getSystemService(DownloadManager.class).enqueue(request);
-        Control.prefs(c).edit().putLong("download_id", id).putString("download_file", fileName)
-            .putString("download_version", release.version).putString("download_sha256", release.sha256).apply();
-    }
+    /**
+     * Download state shared by every MainActivity instance, so leaving and reopening the app keeps showing it.
+     * The APK is fetched by the app itself instead of the system DownloadManager: on some ROMs (seen on vivo
+     * OriginOS) DownloadManager leaves GitHub downloads pending at 0 bytes forever.
+     */
     static final class Progress {
-        int status, reason;
-        long downloaded, total;
+        volatile boolean running;
+        volatile long downloaded, total;
+        volatile String error;
     }
-    static Progress progress(Context c) {
+    static final Progress PROGRESS = new Progress();
+    private static final java.util.concurrent.ExecutorService DOWNLOADER = java.util.concurrent.Executors.newSingleThreadExecutor();
+
+    /** Starts downloading in the background; returns false when a download is already running. */
+    static synchronized boolean download(Context context, Release release) {
+        if (PROGRESS.running) return false;
+        Context c = context.getApplicationContext();
+        PROGRESS.running = true; PROGRESS.downloaded = 0; PROGRESS.total = release.size; PROGRESS.error = null;
+        forgetSystemDownload(c);
+        Control.prefs(c).edit().remove("download_file").remove("download_done").apply();
+        DOWNLOADER.execute(() -> {
+            try {
+                File folder = new File(c.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS), "updates");
+                if (!folder.isDirectory() && !folder.mkdirs()) throw new IOException("无法创建下载目录");
+                File[] old = folder.listFiles();
+                if (old != null) for (File f : old) if (f.getName().endsWith(".part")) f.delete();
+                // A unique file avoids overwriting an APK that a package installer may still be reading.
+                String fileName = "update-" + System.currentTimeMillis() + ".apk";
+                File part = new File(folder, fileName + ".part");
+                fetch(release.url, part);
+                if (release.size > 0 && part.length() != release.size) throw new IOException("下载不完整，请重试");
+                if (!part.renameTo(new File(folder, fileName))) throw new IOException("无法保存更新文件");
+                Control.prefs(c).edit().putString("download_file", fileName).putString("download_version", release.version)
+                    .putString("download_sha256", release.sha256).putBoolean("download_done", true).apply();
+            } catch (Exception e) {
+                PROGRESS.error = e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage();
+            } finally {
+                PROGRESS.running = false;
+            }
+        });
+        return true;
+    }
+
+    private static void fetch(String url, File target) throws IOException {
+        HttpURLConnection connection = (HttpURLConnection) new URL(url).openConnection();
+        connection.setConnectTimeout(20000); connection.setReadTimeout(30000);
+        connection.setInstanceFollowRedirects(true); // GitHub redirects release assets to its download host (https).
+        connection.setRequestProperty("User-Agent", "ClaudeAutoPass-Android");
+        try {
+            int status = connection.getResponseCode();
+            if (status != 200) throw new IOException("下载返回 HTTP " + status);
+            if (!"https".equals(connection.getURL().getProtocol())) throw new IOException("下载地址不是 HTTPS");
+            long length = connection.getContentLengthLong();
+            if (length > 0) PROGRESS.total = length;
+            if (length > 100L * 1024 * 1024) throw new IOException("更新文件过大");
+            try (InputStream in = connection.getInputStream(); OutputStream out = new FileOutputStream(target)) {
+                byte[] buffer = new byte[65536]; int count; long done = 0;
+                while ((count = in.read(buffer)) != -1) {
+                    out.write(buffer, 0, count);
+                    done += count;
+                    PROGRESS.downloaded = done;
+                    if (done > 100L * 1024 * 1024) throw new IOException("更新文件过大");
+                }
+            }
+        } finally { connection.disconnect(); }
+    }
+
+    /** Drops a download that older versions queued in the system DownloadManager (it may be stuck). */
+    static void forgetSystemDownload(Context c) {
         long id = Control.prefs(c).getLong("download_id", -1);
-        if (id == -1) return null;
-        try (Cursor cursor = c.getSystemService(DownloadManager.class).query(new DownloadManager.Query().setFilterById(id))) {
-            if (cursor == null || !cursor.moveToFirst()) return null;
-            Progress p = new Progress();
-            p.status = cursor.getInt(cursor.getColumnIndexOrThrow(DownloadManager.COLUMN_STATUS));
-            p.reason = cursor.getInt(cursor.getColumnIndexOrThrow(DownloadManager.COLUMN_REASON));
-            p.downloaded = cursor.getLong(cursor.getColumnIndexOrThrow(DownloadManager.COLUMN_BYTES_DOWNLOADED_SO_FAR));
-            p.total = cursor.getLong(cursor.getColumnIndexOrThrow(DownloadManager.COLUMN_TOTAL_SIZE_BYTES));
-            return p;
-        }
+        if (id == -1) return;
+        try { c.getSystemService(DownloadManager.class).remove(id); } catch (RuntimeException ignored) { }
+        Control.prefs(c).edit().remove("download_id").apply();
     }
+
+    /** True when a finished, not yet installed download exists. */
+    static boolean downloaded(Context c) {
+        if (!Control.prefs(c).getBoolean("download_done", false)) return false;
+        try { return apk(c).isFile(); } catch (IOException e) { return false; }
+    }
+
     static File apk(Context c) throws IOException {
         String name = Control.prefs(c).getString("download_file", "");
         if (!name.matches("update-[0-9]+\\.apk")) throw new IOException("无有效的更新文件");
