@@ -22,6 +22,11 @@ android {
                 keyAlias = "claude-auto-pass"
                 keyPassword = System.getenv("APP_KEYSTORE_PASSWORD")
             }
+            // minSdk 28 would make AGP sign with v2 only. Some installers (vivo OriginOS when opening a downloaded
+            // APK) look for the classic JAR certificate in META-INF and reject the file without it, so sign all ways.
+            enableV1Signing = true
+            enableV2Signing = true
+            enableV3Signing = true
         }
     }
     buildTypes { getByName("release") { signingConfig = signingConfigs.getByName("distribution") } }
