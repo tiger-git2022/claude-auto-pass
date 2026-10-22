@@ -7,12 +7,15 @@ using System.Text.RegularExpressions;
 
 namespace ClaudeAutoPass
 {
-    public enum Kind { None, Deny, Once, Session }
+    /// <summary>LocalProject: "Always allow, save to local project settings" on Claude Desktop's Code cards (chosen last).</summary>
+    public enum Kind { None, Deny, Once, Session, LocalProject }
 
     /// <summary>
     /// Same rules as the Android app (app/src/main/java/.../ApprovalRules.java), plus labels used by
     /// Claude Desktop. Deliberately exact labels: never approve arbitrary text containing "allow".
-    /// Permanent grants such as "Always allow" are never chosen.
+    /// Permanent grants such as "Always allow" are never chosen, except the one the owner approved for Claude Desktop's
+    /// Code cards: "Always allow, save to local project settings" (only this project's .claude/settings.local.json),
+    /// used when the card offers nothing narrower.
     /// </summary>
     public static class ApprovalRules
     {
@@ -47,6 +50,12 @@ namespace ClaudeAutoPass
             "拒绝", "不允许", "取消", "拒絕", "不允許",
         };
 
+        // "始终允许 , 保存到本地项目设置" / "Always allow, save to local project settings". Saving to shared project
+        // settings or user settings is a wider grant and stays excluded.
+        static readonly Regex LocalProjectLabel = new Regex(
+            @"^(?:始终允许|始終允許|一律允許|always allow)\s*[,、:]?\s*\(?\s*(?:保存到本地项目设置|保存至本地项目设置|保存到本地項目設置|儲存到本機專案設定|儲存至本機專案設定|save to local project settings|saved to local project settings|save in local project settings)\s*\)?$",
+            RegexOptions.CultureInvariant);
+
         const string KeyToken = @"(?:ctrl|control|alt|shift|enter|return|esc|escape|cmd|⌘|⌥|⇧|⌃|⏎|↵|↩)";
         // Trailing keyboard hints that Electron apps sometimes put into a button's accessible name,
         // e.g. "Deny Esc", "Allow once ⏎", "Allow once (Ctrl+Enter)".
@@ -69,22 +78,28 @@ namespace ClaudeAutoPass
             if (SessionLabels.Contains(text)) return Kind.Session;
             if (OnceLabels.Contains(text)) return Kind.Once;
             if (DenyLabels.Contains(text)) return Kind.Deny;
+            if (LocalProjectLabel.IsMatch(text)) return Kind.LocalProject;
             return Kind.None;
         }
 
-        /// <summary>A real prompt offers a positive choice next to a deny choice, or both positive choices.</summary>
+        /// <summary>A real prompt offers a positive choice next to a deny choice, or both one-time choices.</summary>
         public static bool IsApprovalGroup(IList<Kind> kinds)
         {
-            bool once = kinds.Contains(Kind.Once), session = kinds.Contains(Kind.Session);
-            return (once || session) && (kinds.Contains(Kind.Deny) || (once && session));
+            bool once = kinds.Contains(Kind.Once), session = kinds.Contains(Kind.Session), local = kinds.Contains(Kind.LocalProject);
+            return (once || session || local) && (kinds.Contains(Kind.Deny) || (once && session));
         }
+
+        /// <summary>Higher wins: session-wide, then once, then the local-project grant.</summary>
+        public static int Rank(Kind kind) => kind == Kind.Session ? 3 : kind == Kind.Once ? 2 : kind == Kind.LocalProject ? 1 : 0;
 
         /// <summary>Index of the button to press, or -1. Prefers session-wide approval.</summary>
         public static int Choose(IList<Kind> kinds)
         {
             if (!IsApprovalGroup(kinds)) return -1;
-            int session = kinds.IndexOf(Kind.Session);
-            return session >= 0 ? session : kinds.IndexOf(Kind.Once);
+            int best = -1;
+            for (int i = 0; i < kinds.Count; i++)
+                if (Rank(kinds[i]) > 0 && (best < 0 || Rank(kinds[i]) > Rank(kinds[best]))) best = i;
+            return best;
         }
 
         public static bool IsClaudeProcess(string processName) =>
@@ -94,7 +109,7 @@ namespace ClaudeAutoPass
             IsClaudeProcess(processName) && enabled && unlocked;
 
         public static string Describe(Kind kind) =>
-            kind == Kind.Session ? "已允许本次会话" : kind == Kind.Once ? "已允许一次" : "";
+            kind == Kind.Session ? "已允许本次会话" : kind == Kind.Once ? "已允许一次" : kind == Kind.LocalProject ? "已始终允许（本地项目）" : "";
     }
 
     /// <summary>Windows release tags look like win-v1.0.0-t12.</summary>

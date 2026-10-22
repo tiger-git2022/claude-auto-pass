@@ -115,8 +115,8 @@ namespace ClaudeAutoPass
                 result.Buttons += found.Count;
                 foreach (Candidate c in found)
                 {
-                    if (c.Kind != Kind.Session && c.Kind != Kind.Once) continue;
-                    if (best != null && (best.Kind == Kind.Session || c.Kind != Kind.Session)) continue;
+                    if (ApprovalRules.Rank(c.Kind) == 0) continue;
+                    if (best != null && ApprovalRules.Rank(c.Kind) <= ApprovalRules.Rank(best.Kind)) continue;
                     if (!CachedEnabled(c.Element) || !ids.Contains(CachedProcessId(c.Element))) continue;
                     if (InApprovalGroup(c.Element, root)) best = c;
                 }
@@ -226,7 +226,7 @@ namespace ClaudeAutoPass
                     sb.AppendLine("  元素很少：Claude 可能没有开启辅助功能树。可在托盘菜单选择「以辅助功能模式重启 Claude」。 / Few elements: try 'Restart Claude with accessibility'.");
                 foreach (Candidate c in found)
                 {
-                    string group = c.Kind == Kind.Session || c.Kind == Kind.Once ? (InApprovalGroup(c.Element, root) ? " [审批组 / group]" : " [单独 / isolated]") : "";
+                    string group = ApprovalRules.Rank(c.Kind) > 0 ? (InApprovalGroup(c.Element, root) ? " [审批组 / group]" : " [单独 / isolated]") : "";
                     sb.AppendLine($"  - \"{c.Label}\" → {c.Kind}{group}{(CachedEnabled(c.Element) ? "" : " (disabled)")}");
                 }
             }

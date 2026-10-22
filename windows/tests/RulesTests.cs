@@ -37,6 +37,18 @@ static class RulesTests
         Check(ApprovalRules.Classify("Always allow ⌘⏎") == Kind.None, "Shortcut does not make permanent grant acceptable");
         Check(ApprovalRules.Classify("Allow once now") == Kind.None, "Only keyboard hints are stripped");
 
+        // Claude Desktop Code cards: "Deny | Always allow, save to local project settings ⌄" (owner-approved grant).
+        Check(ApprovalRules.Classify("始终允许 , 保存到本地项目设置") == Kind.LocalProject, "Local project grant (zh)");
+        Check(ApprovalRules.Classify("始终允许，保存到本地项目设置 Ctrl+Shift+⏎") == Kind.LocalProject, "Local project grant with shortcut");
+        Check(ApprovalRules.Classify("Always allow, save to local project settings") == Kind.LocalProject, "Local project grant (en)");
+        Check(ApprovalRules.Classify("始终允许 , 保存到用户设置") == Kind.None, "User-wide grant is never chosen");
+        Check(ApprovalRules.Classify("Always allow, save to project settings") == Kind.None, "Shared project grant is never chosen");
+        Check(ApprovalRules.Classify("更多允许选项") == Kind.None, "Dropdown arrow is not a choice");
+        Check(ApprovalRules.Choose(new List<Kind> { Kind.Deny, Kind.LocalProject, Kind.None }) == 1, "Local project grant next to deny");
+        Check(ApprovalRules.Choose(new List<Kind> { Kind.LocalProject }) == -1, "Isolated local project grant");
+        Check(ApprovalRules.Choose(new List<Kind> { Kind.Deny, Kind.LocalProject, Kind.Once }) == 2, "One-time beats local project grant");
+        Check(ApprovalRules.Choose(new List<Kind> { Kind.Deny, Kind.Session, Kind.LocalProject }) == 1, "Session beats local project grant");
+
         Check(ApprovalRules.IsClaudeProcess("claude") && ApprovalRules.IsClaudeProcess("Claude"), "Claude Desktop process");
         Check(!ApprovalRules.IsClaudeProcess("claude-helper") && !ApprovalRules.IsClaudeProcess("msedge") && !ApprovalRules.IsClaudeProcess("consent"), "Other processes");
         Check(!ApprovalRules.CanAct("claude", false, true), "Pause gate");

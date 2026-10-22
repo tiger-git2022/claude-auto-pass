@@ -67,8 +67,8 @@ jobs:
         run: |
           $edge = "${env:ProgramFiles(x86)}\Microsoft\Edge\Application\msedge.exe"
           if (-not (Test-Path $edge)) { $edge = "$env:ProgramFiles\Microsoft\Edge\Application\msedge.exe" }
-          $page = [Uri]::new((Resolve-Path windows/tests/prompt.html).Path).AbsoluteUri
-          function Run-Edge($name, $extra) {
+          function Run-Edge($name, $extra, $file = 'prompt.html', $code = 0, $title = 'CLICKED-SESSION') {
+            $page = [Uri]::new((Resolve-Path "windows/tests/$file").Path).AbsoluteUri
             Get-Process msedge -ErrorAction SilentlyContinue | Stop-Process -Force
             Start-Sleep 2
             $edgeArgs = @("--user-data-dir=$env:RUNNER_TEMP\edge-$name", '--no-first-run', '--no-default-browser-check', "--app=$page") + $extra
@@ -81,15 +81,38 @@ jobs:
             Write-Host "== Edge $name : exit=$($p.ExitCode) titles=[$titles]"
             if (Test-Path $out) { Get-Content $out | Select-Object -First 60 | ForEach-Object { Write-Host $_ } }
             if (Test-Path "$out.crash.txt") { Get-Content "$out.crash.txt" | ForEach-Object { Write-Host $_ } }
-            return ($p.ExitCode -eq 0 -and $titles -match 'CLICKED-SESSION')
+            return ($p.ExitCode -eq $code -and $titles -match $title)
           }
           # Informational: does Chromium build its accessibility tree for a UI Automation client on its own?
           $auto = Run-Edge 'default' @()
           Write-Host "Without --force-renderer-accessibility: $auto"
           # Required: with the switch the tray app's "restart Claude with accessibility" uses.
           $forced = Run-Edge 'forced' @('--force-renderer-accessibility')
+          # Claude Desktop Code card: only Deny and "Always allow, save to local project settings" (exit code 3).
+          $local = Run-Edge 'local' @('--force-renderer-accessibility') 'prompt-local.html' 3 'CLICKED-LOCAL'
           Get-Process msedge -ErrorAction SilentlyContinue | Stop-Process -Force
           if (-not $forced) { Write-Error 'Edge self-test failed'; exit 1 }
+          if (-not $local) { Write-Error 'Edge local-project self-test failed'; exit 1 }
+      - name: Self-test tray menu (screenshots)
+        if: steps.version.outputs.skip != 'true'
+        run: |
+          New-Item -ItemType Directory -Force screenshots | Out-Null
+          $prefix = "$PWD/screenshots/menu"
+          $p = Start-Process dist/claude-auto-pass.exe -ArgumentList '--self-test-menu', $prefix -Wait -PassThru
+          if (Test-Path "$prefix.txt") { Get-Content "$prefix.txt" }
+          if (Test-Path "$prefix.crash.txt") { Get-Content "$prefix.crash.txt" }
+          foreach ($f in Get-ChildItem screenshots -Filter *.png) {
+            Write-Host "== $($f.Name) base64 begin"
+            Write-Host ([Convert]::ToBase64String([IO.File]::ReadAllBytes($f.FullName)))
+            Write-Host "== $($f.Name) base64 end"
+          }
+          if ($p.ExitCode -ne 0) { Write-Error "Tray menu self-test failed ($($p.ExitCode))"; exit 1 }
+      - uses: actions/upload-artifact@v7
+        if: always() && steps.version.outputs.skip != 'true'
+        with:
+          name: menu-screenshots-${{ steps.version.outputs.tag }}
+          path: screenshots/*
+          if-no-files-found: ignore
       - uses: actions/upload-artifact@v7
         if: always() && steps.version.outputs.skip != 'true'
         with:
