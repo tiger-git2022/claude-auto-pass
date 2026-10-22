@@ -1,0 +1,154 @@
+using System;
+using System.Collections;
+using System.Collections.Generic;
+using System.Diagnostics;
+using System.IO;
+using System.Linq;
+using System.Net;
+using System.Net.Http;
+using System.Security.Cryptography;
+using System.Threading.Tasks;
+using System.Web.Script.Serialization;
+
+namespace ClaudeAutoPass
+{
+    sealed class Release
+    {
+        public string Tag;
+        public string Notes;
+        public string HtmlUrl;
+        public string ExeUrl;
+        public string ExeDigest;   // "sha256:<hex>" from GitHub, when provided
+        public string SumsUrl;     // SHA256SUMS.txt fallback
+    }
+
+    /// <summary>Checks GitHub for newer win-v*-tN releases and replaces this exe in place.</summary>
+    static class Updater
+    {
+        static readonly HttpClient Http = CreateClient();
+
+        static HttpClient CreateClient()
+        {
+            ServicePointManager.SecurityProtocol |= SecurityProtocolType.Tls12;
+            var client = new HttpClient { Timeout = TimeSpan.FromMinutes(5) };
+            client.DefaultRequestHeaders.UserAgent.ParseAdd("ClaudeAutoPass-Windows/" + AppInfo.Version);
+            client.DefaultRequestHeaders.Accept.ParseAdd("application/vnd.github+json");
+            return client;
+        }
+
+        /// <summary>Newest Windows release, or null when none is newer than this build.</summary>
+        public static async Task<Release> CheckAsync()
+        {
+            string json = await Http.GetStringAsync("https://api.github.com/repos/" + AppInfo.Repo + "/releases?per_page=50").ConfigureAwait(false);
+            var serializer = new JavaScriptSerializer { MaxJsonLength = 16 * 1024 * 1024 };
+            var releases = serializer.Deserialize<ArrayList>(json);
+            Release best = null;
+            int[] bestVersion = null;
+            foreach (Dictionary<string, object> r in releases.OfType<Dictionary<string, object>>())
+            {
+                if (True(r, "draft") || True(r, "prerelease")) continue;
+                string tag = Str(r, "tag_name");
+                int[] version = Versioning.Parse(tag, true);
+                if (version == null || (bestVersion != null && Versioning.Compare(version, bestVersion) <= 0)) continue;
+                var release = new Release { Tag = tag, Notes = Str(r, "body"), HtmlUrl = Str(r, "html_url") };
+                if (r.TryGetValue("assets", out object assets) && assets is ArrayList list)
+                {
+                    foreach (Dictionary<string, object> a in list.OfType<Dictionary<string, object>>())
+                    {
+                        string name = Str(a, "name");
+                        if (name == AppInfo.AssetName) { release.ExeUrl = Str(a, "browser_download_url"); release.ExeDigest = Str(a, "digest"); }
+                        else if (name == "SHA256SUMS.txt") release.SumsUrl = Str(a, "browser_download_url");
+                    }
+                }
+                if (release.ExeUrl == null) continue;
+                best = release;
+                bestVersion = version;
+            }
+            return best != null && Versioning.IsNewer(best.Tag, AppInfo.Version) ? best : null;
+        }
+
+        static bool True(Dictionary<string, object> d, string key) => d.TryGetValue(key, out object v) && v is bool b && b;
+        static string Str(Dictionary<string, object> d, string key) => d.TryGetValue(key, out object v) ? v as string : null;
+
+        static void RequireRepoUrl(string url)
+        {
+            var uri = new Uri(url);
+            if (uri.Scheme != "https" || uri.Host != "github.com" || !uri.AbsolutePath.StartsWith("/" + AppInfo.Repo + "/releases/download/", StringComparison.Ordinal))
+                throw new InvalidDataException("更新地址不属于项目仓库 / Update URL is outside the project repository");
+        }
+
+        /// <summary>Downloads and verifies the new exe, returning its temporary path.</summary>
+        public static async Task<string> DownloadAsync(Release release, IProgress<int> progress)
+        {
+            RequireRepoUrl(release.ExeUrl);
+            string expected = release.ExeDigest != null && release.ExeDigest.StartsWith("sha256:", StringComparison.Ordinal)
+                ? release.ExeDigest.Substring(7).ToLowerInvariant() : null;
+            if (expected == null && release.SumsUrl != null)
+            {
+                RequireRepoUrl(release.SumsUrl);
+                string sums = await Http.GetStringAsync(release.SumsUrl).ConfigureAwait(false);
+                expected = sums.Split('\n').Select(l => l.Trim().Split(new[] { ' ', '*' }, StringSplitOptions.RemoveEmptyEntries))
+                    .Where(p => p.Length == 2 && p[1] == AppInfo.AssetName).Select(p => p[0].ToLowerInvariant()).FirstOrDefault();
+            }
+            if (expected == null) throw new InvalidDataException("缺少 SHA-256 校验值 / Missing SHA-256 checksum");
+
+            string target = Path.Combine(Path.GetTempPath(), "claude-auto-pass-" + release.Tag + ".exe");
+            using (HttpResponseMessage response = await Http.GetAsync(release.ExeUrl, HttpCompletionOption.ResponseHeadersRead).ConfigureAwait(false))
+            {
+                response.EnsureSuccessStatusCode();
+                long total = response.Content.Headers.ContentLength ?? -1;
+                using (Stream input = await response.Content.ReadAsStreamAsync().ConfigureAwait(false))
+                using (FileStream output = File.Create(target))
+                {
+                    var buffer = new byte[81920];
+                    long read = 0;
+                    int n;
+                    while ((n = await input.ReadAsync(buffer, 0, buffer.Length).ConfigureAwait(false)) > 0)
+                    {
+                        await output.WriteAsync(buffer, 0, n).ConfigureAwait(false);
+                        read += n;
+                        if (total > 0) progress?.Report((int)(read * 100 / total));
+                    }
+                }
+            }
+            string actual;
+            using (var sha = SHA256.Create())
+            using (FileStream file = File.OpenRead(target))
+                actual = BitConverter.ToString(sha.ComputeHash(file)).Replace("-", "").ToLowerInvariant();
+            if (actual != expected)
+            {
+                File.Delete(target);
+                throw new InvalidDataException("SHA-256 校验失败 / SHA-256 mismatch");
+            }
+            return target;
+        }
+
+        /// <summary>Swaps the running exe for the downloaded one and starts it. Windows allows renaming a running exe.</summary>
+        public static void Install(string downloaded)
+        {
+            string current = System.Windows.Forms.Application.ExecutablePath;
+            string old = current + ".old";
+            if (File.Exists(old)) File.Delete(old);
+            File.Move(current, old);
+            try { File.Move(downloaded, current); }
+            catch
+            {
+                File.Move(old, current);
+                throw;
+            }
+            Process.Start(new ProcessStartInfo(current, "--updated") { UseShellExecute = false });
+        }
+
+        /// <summary>Removes the previous exe left behind by an update.</summary>
+        public static void CleanUp()
+        {
+            string old = System.Windows.Forms.Application.ExecutablePath + ".old";
+            for (int i = 0; i < 20 && File.Exists(old); i++)
+            {
+                try { File.Delete(old); }
+                catch (IOException) { System.Threading.Thread.Sleep(250); }
+                catch (UnauthorizedAccessException) { System.Threading.Thread.Sleep(250); }
+            }
+        }
+    }
+}

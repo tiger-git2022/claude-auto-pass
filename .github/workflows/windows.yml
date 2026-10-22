@@ -1,0 +1,105 @@
+name: Build Windows EXE
+on:
+  push:
+    branches: [main]
+    paths: ['windows/**', '!windows/**.md', '.github/workflows/windows.yml', 'scripts/windows-ci.py']
+  pull_request:
+    paths: ['windows/**', '!windows/**.md', '.github/workflows/windows.yml', 'scripts/windows-ci.py']
+  workflow_dispatch:
+    inputs:
+      force:
+        description: '重新发布同一提交 / Release this commit again'
+        type: boolean
+        default: false
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    permissions:
+      contents: write
+    defaults:
+      run:
+        shell: pwsh
+    env:
+      PYTHONUTF8: '1'
+      DOTNET_CLI_TELEMETRY_OPTOUT: '1'
+      DOTNET_NOLOGO: '1'
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - name: Compute numbered version
+        id: version
+        env:
+          FORCE: ${{ inputs.force }}
+          PUBLISH: ${{ github.ref == 'refs/heads/main' && github.event_name != 'pull_request' }}
+        run: |
+          git fetch --force --tags origin
+          python scripts/windows-ci.py version
+      - name: Rule tests
+        if: steps.version.outputs.skip != 'true'
+        run: dotnet run --project windows/tests/RulesTests.csproj -c Release
+      - name: Build exe
+        if: steps.version.outputs.skip != 'true'
+        run: |
+          dotnet build windows/ClaudeAutoPass.csproj -c Release -p:BuildNumber=${{ steps.version.outputs.build }}
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+          New-Item -ItemType Directory -Force dist | Out-Null
+          Copy-Item windows/bin/Release/net48/ClaudeAutoPass.exe dist/claude-auto-pass.exe
+          $hash = (Get-FileHash dist/claude-auto-pass.exe -Algorithm SHA256).Hash.ToLowerInvariant()
+          Set-Content -Path dist/SHA256SUMS.txt -Value "$hash  claude-auto-pass.exe" -Encoding ascii
+          Get-ChildItem dist | Format-Table Name, Length
+      - name: Self-test with WinForms buttons
+        if: steps.version.outputs.skip != 'true'
+        run: |
+          $out = "$env:RUNNER_TEMP/selftest-form.txt"
+          $p = Start-Process dist/claude-auto-pass.exe -ArgumentList '--self-test-form', $out -Wait -PassThru
+          if (Test-Path $out) { Get-Content $out }
+          if ($p.ExitCode -ne 0) { Write-Error "WinForms self-test failed ($($p.ExitCode))"; exit 1 }
+      - name: Self-test with Edge (Chromium, like Claude Desktop)
+        if: steps.version.outputs.skip != 'true'
+        run: |
+          $edge = "${env:ProgramFiles(x86)}\Microsoft\Edge\Application\msedge.exe"
+          if (-not (Test-Path $edge)) { $edge = "$env:ProgramFiles\Microsoft\Edge\Application\msedge.exe" }
+          $page = [Uri]::new((Resolve-Path windows/tests/prompt.html).Path).AbsoluteUri
+          function Run-Edge($name, $extra) {
+            Get-Process msedge -ErrorAction SilentlyContinue | Stop-Process -Force
+            Start-Sleep 2
+            $edgeArgs = @("--user-data-dir=$env:RUNNER_TEMP\edge-$name", '--no-first-run', '--no-default-browser-check', "--app=$page") + $extra
+            Start-Process $edge -ArgumentList $edgeArgs
+            Start-Sleep 10
+            $out = "$env:RUNNER_TEMP/selftest-edge-$name.txt"
+            $p = Start-Process dist/claude-auto-pass.exe -ArgumentList '--self-test-process', 'msedge', '30', $out -Wait -PassThru
+            Start-Sleep 2
+            $titles = (Get-Process msedge -ErrorAction SilentlyContinue | Where-Object MainWindowTitle | ForEach-Object MainWindowTitle) -join ', '
+            Write-Host "== Edge $name : exit=$($p.ExitCode) titles=[$titles]"
+            if (Test-Path $out) { Get-Content $out | Select-Object -First 60 | ForEach-Object { Write-Host $_ } }
+            return ($p.ExitCode -eq 0 -and $titles -match 'CLICKED-SESSION')
+          }
+          # Informational: does Chromium build its accessibility tree for a UI Automation client on its own?
+          $auto = Run-Edge 'default' @()
+          Write-Host "Without --force-renderer-accessibility: $auto"
+          # Required: with the switch the tray app's "restart Claude with accessibility" uses.
+          $forced = Run-Edge 'forced' @('--force-renderer-accessibility')
+          Get-Process msedge -ErrorAction SilentlyContinue | Stop-Process -Force
+          if (-not $forced) { Write-Error 'Edge self-test failed'; exit 1 }
+      - uses: actions/upload-artifact@v7
+        if: always() && steps.version.outputs.skip != 'true'
+        with:
+          name: ClaudeAutoPass-Windows-${{ steps.version.outputs.tag }}
+          path: dist/*
+      - name: Chinese-first release notes
+        if: steps.version.outputs.skip != 'true' && steps.version.outputs.publish == 'true'
+        run: python scripts/windows-ci.py notes '${{ steps.version.outputs.base }}' '${{ steps.version.outputs.tag }}'
+      - name: Publish GitHub release
+        if: steps.version.outputs.skip != 'true' && steps.version.outputs.publish == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.version.outputs.tag }}
+        # --latest=false keeps the APK release as "latest", which the Android app checks for updates.
+        run: gh release create $env:TAG dist/claude-auto-pass.exe dist/SHA256SUMS.txt --target $env:GITHUB_SHA --title "Claude Auto Pass Windows $env:TAG" --notes-file windows-release-notes.md --latest=false

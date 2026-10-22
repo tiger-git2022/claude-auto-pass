@@ -11,3 +11,7 @@ outputs/
 .signing/
 .device/
 .gradle-home/
+
+# Windows
+windows/**/bin/
+windows/**/obj/

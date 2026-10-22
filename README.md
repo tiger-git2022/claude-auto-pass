@@ -1,6 +1,8 @@
 # Claude 自动审批 / Claude Auto Pass
 
-[![Build APK](https://github.com/tiger-git2022/claude-auto-pass/actions/workflows/android.yml/badge.svg)](https://github.com/tiger-git2022/claude-auto-pass/actions/workflows/android.yml) [![Release](https://img.shields.io/github/v/release/tiger-git2022/claude-auto-pass)](https://github.com/tiger-git2022/claude-auto-pass/releases/latest)
+[![Build APK](https://github.com/tiger-git2022/claude-auto-pass/actions/workflows/android.yml/badge.svg)](https://github.com/tiger-git2022/claude-auto-pass/actions/workflows/android.yml) [![Release](https://img.shields.io/github/v/release/tiger-git2022/claude-auto-pass)](https://github.com/tiger-git2022/claude-auto-pass/releases/latest) [![Build Windows EXE](https://github.com/tiger-git2022/claude-auto-pass/actions/workflows/windows.yml/badge.svg)](https://github.com/tiger-git2022/claude-auto-pass/actions/workflows/windows.yml)
+
+**下载 / Download：** [Android APK](https://github.com/tiger-git2022/claude-auto-pass/releases/latest) · [Windows EXE](https://github.com/tiger-git2022/claude-auto-pass/releases?q=win-v&expanded=true)
 
 ## 中文
 
@@ -41,6 +43,19 @@ APK 侧载后，部分手机需先到应用详情页的菜单中选择“允许�
 - Release 中 APK 文件名固定为 `claude-auto-pass.apk`，App 从最新正式 Release 获取更新。
 - README 和版本说明均先中文、后英文；发布流程会检查版本说明的顺序。
 - 签名密钥通过仓库 Actions Secrets `APP_KEYSTORE_BASE64`、`APP_KEYSTORE_PASSWORD` 提供，不提交到源码。后续更新须保持相同密钥，维护者应妥善备份本机密钥。
+
+### Windows 版（Claude Desktop）
+
+`windows/` 目录是给 **Claude Desktop 桌面端** 用的托盘小程序，规则与 Android 版相同，另外认识桌面端的“Allow for this chat / 在此聊天中始终允许”。
+
+1. 在 [Releases](https://github.com/tiger-git2022/claude-auto-pass/releases?q=win-v&expanded=true) 下载最新 `win-v…` 版本里的 `claude-auto-pass.exe`，放到任意文件夹，双击运行。无需安装，Windows 10/11 自带所需的 .NET Framework 4.8。首次运行时 SmartScreen 可能提示“未知发布者”，点“更多信息 → 仍要运行”。
+2. 程序只在右下角托盘显示橙色盾牌图标，**不需要保持前台**。左键单击图标开启/关闭（关闭时图标变灰），右键菜单可设置开机自启、检查更新、退出。首次运行默认开启。
+3. **Claude 也不需要在前台**：通过 Windows UI 自动化读取 Claude 窗口里的按钮并直接触发，不移动鼠标；Claude 在后台、被遮挡或最小化时都能工作。电脑锁屏时暂停。
+4. 如果审批框出现了但没有被自动点击，右键托盘图标选“导出按钮文字（诊断）”，会打开一个文本，列出程序看到的 Claude 按钮文字和分类，按它调整规则即可。若诊断显示“元素很少”，选“以辅助功能模式重启 Claude”：会关闭 Claude 并加上 `--force-renderer-accessibility` 重新打开，让 Chromium 生成按钮信息。
+5. 只处理进程名为 `claude.exe` 的窗口；只点“本次会话/本次聊天中始终允许”或“允许一次”，而且附近必须有“拒绝”等其他审批选项；永不点“始终允许”这类永久授权，也不点 Windows 的系统授权（UAC）。设置保存在 `%AppData%\ClaudeAutoPass`，不保存对话或截图；网络只用于检查 GitHub 更新。
+6. 检查更新会读取 `win-v*-tN` 版本，下载后先校验 SHA-256，再原地替换 exe 并重启。exe 放在需要管理员权限的文件夹时会改为打开下载页面。
+
+发布：推送 `main` 且改动了 `windows/` 时，[Windows EXE](https://github.com/tiger-git2022/claude-auto-pass/actions/workflows/windows.yml) 工作流在 Windows 上跑规则测试、编译，并用 WinForms 窗口和 Edge（与 Claude Desktop 同为 Chromium 内核）实测自动点击，然后发布 `win-v1.0.0-tN` 版本。这些 Release 不标记为“最新”，不影响 App 的更新检查；APK 工作流也会忽略 `windows/` 的改动。升级基础版本时修改 `windows/ClaudeAutoPass.csproj` 的 `BaseVersion` 并更新 `windows/CHANGELOG.md`。本地构建：`dotnet run --project windows/tests/RulesTests.csproj`，`dotnet build windows/ClaudeAutoPass.csproj -c Release`。
 
 ### 本地构建
 
@@ -83,6 +98,12 @@ This utility approves Claude requests on your behalf. Enable it only when that m
 A foreground service with a visible notification keeps the helper running after leaving the screen. Exit stops that service and preserves accessibility authorization. If the device still restricts it, use Background settings to review autostart and battery settings. The UI distinguishes authorization from a live service connection.
 
 Button text is processed locally. No conversations, screenshots, or screen content are stored or uploaded. Local storage contains controls, the last action, and download state. No Claude credentials are needed. Networking is used only for GitHub release checks and APK downloads.
+
+### Windows (Claude Desktop)
+
+`windows/` contains a tray app for **Claude Desktop** with the same rules, plus desktop labels such as “Allow for this chat”. Download `claude-auto-pass.exe` from the latest `win-v…` [release](https://github.com/tiger-git2022/claude-auto-pass/releases?q=win-v&expanded=true) and run it; no installer is needed (Windows 10/11 include .NET Framework 4.8). Neither the exe nor Claude needs to stay in the foreground: it reads Claude's buttons through Windows UI Automation and invokes them without moving the mouse, even when Claude is in the background or minimized. It pauses while the PC is locked. Left-click the tray icon to enable or disable; the right-click menu has start with Windows, button-label diagnostics, restart Claude with accessibility (`--force-renderer-accessibility`), update checks (SHA-256 verified, in-place replacement), and exit. It only acts on `claude.exe` windows, never presses permanent grants such as “Always allow”, and stores settings in `%AppData%\ClaudeAutoPass`.
+
+The [Windows EXE](https://github.com/tiger-git2022/claude-auto-pass/actions/workflows/windows.yml) workflow runs rule tests, builds, checks real clicks against WinForms and Edge (Chromium, like Claude Desktop), and publishes `win-v1.0.0-tN` releases that are not marked latest, so the Android app's update check is unaffected.
 
 ### Build and release
 

@@ -1,0 +1,47 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- .NET Framework 4.8 ships with Windows 10/11, so the exe runs without installing a runtime. -->
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net48</TargetFramework>
+    <LangVersion>9.0</LangVersion>
+    <Nullable>disable</Nullable>
+    <AssemblyName>ClaudeAutoPass</AssemblyName>
+    <RootNamespace>ClaudeAutoPass</RootNamespace>
+    <ApplicationIcon>app.ico</ApplicationIcon>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <PlatformTarget>AnyCPU</PlatformTarget>
+    <Prefer32Bit>false</Prefer32Bit>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+    <DebugType>embedded</DebugType>
+    <!-- Bump BaseVersion together with windows/CHANGELOG.md; CI passes BuildNumber (the N in win-vX.Y.Z-tN). -->
+    <BaseVersion>1.0.0</BaseVersion>
+    <BuildNumber Condition="'$(BuildNumber)' == ''">0</BuildNumber>
+    <Version>$(BaseVersion).$(BuildNumber)</Version>
+    <FileVersion>$(BaseVersion).$(BuildNumber)</FileVersion>
+    <InformationalVersion>$(BaseVersion)-t$(BuildNumber)</InformationalVersion>
+    <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
+    <Product>Claude 自动审批 / Claude Auto Pass</Product>
+    <Company>tiger-git2022</Company>
+    <Copyright>tiger-git2022</Copyright>
+    <Description>Claude Desktop 自动审批 / Claude Desktop approval helper</Description>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Remove="tests/**" />
+    <None Remove="tests/**" />
+    <EmbeddedResource Include="app.ico" LogicalName="app.ico" />
+    <Reference Include="System.Windows.Forms" />
+    <Reference Include="System.Drawing" />
+    <Reference Include="System.Web.Extensions" />
+    <Reference Include="System.Net.Http" />
+    <PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies" Version="1.0.3" PrivateAssets="all" />
+    <!-- Type library for the Windows UI Automation COM API (UIA3); embedded, so no extra DLL ships. -->
+    <PackageReference Include="Interop.UIAutomationClient" Version="10.19041.0" ExcludeAssets="runtime" PrivateAssets="all" />
+  </ItemGroup>
+  <Target Name="EmbedUiaInterop" AfterTargets="ResolveAssemblyReferences">
+    <ItemGroup>
+      <ReferencePath Condition="'%(FileName)' == 'Interop.UIAutomationClient'">
+        <EmbedInteropTypes>true</EmbedInteropTypes>
+      </ReferencePath>
+    </ItemGroup>
+  </Target>
+</Project>
