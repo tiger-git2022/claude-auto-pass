@@ -37,11 +37,12 @@
     <!-- Type library for the Windows UI Automation COM API (UIA3); embedded, so no extra DLL ships. -->
     <PackageReference Include="Interop.UIAutomationClient" Version="10.19041.0" ExcludeAssets="runtime" PrivateAssets="all" />
   </ItemGroup>
-  <Target Name="EmbedUiaInterop" AfterTargets="ResolveAssemblyReferences">
+  <!-- Csc reads ReferencePathWithRefAssemblies, so mark the interop assembly there for /link (embedding). -->
+  <Target Name="EmbedUiaInterop" BeforeTargets="CoreCompile" AfterTargets="FindReferenceAssembliesForReferences">
     <ItemGroup>
-      <ReferencePath Condition="'%(FileName)' == 'Interop.UIAutomationClient'">
+      <ReferencePathWithRefAssemblies Condition="'%(FileName)' == 'Interop.UIAutomationClient'">
         <EmbedInteropTypes>true</EmbedInteropTypes>
-      </ReferencePath>
+      </ReferencePathWithRefAssemblies>
     </ItemGroup>
   </Target>
 </Project>
