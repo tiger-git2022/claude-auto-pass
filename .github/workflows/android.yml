@@ -70,7 +70,8 @@ jobs:
           cp app/build/outputs/apk/release/app-release.apk dist/claude-auto-pass.apk
           # Fail the release if any signature scheme is missing (vivo rejects APKs without the v1 certificate).
           APKSIGNER=$(ls -d "$ANDROID_HOME"/build-tools/*/apksigner | sort -V | tail -n 1)
-          "$APKSIGNER" verify --verbose --print-certs dist/claude-auto-pass.apk | tee apksigner.txt
+          # --min-sdk-version 23 makes apksigner check v1 and v2 too; for minSdk 28 it would only check v3.
+          "$APKSIGNER" verify --verbose --print-certs --min-sdk-version 23 dist/claude-auto-pass.apk | tee apksigner.txt
           for scheme in 1 2 3; do grep -q "Verified using v$scheme scheme .*: true" apksigner.txt || { echo "Missing v$scheme signature"; exit 1; }; done
           cd dist && sha256sum claude-auto-pass.apk > SHA256SUMS.txt
       - uses: actions/upload-artifact@v7
