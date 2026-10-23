@@ -41,6 +41,9 @@ static class RulesTests
         Check(ApprovalRules.Classify("始终允许 , 保存到本地项目设置") == Kind.LocalProject, "Local project grant (zh)");
         Check(ApprovalRules.Classify("始终允许，保存到本地项目设置 Ctrl+Shift+⏎") == Kind.LocalProject, "Local project grant with shortcut");
         Check(ApprovalRules.Classify("Always allow, save to local project settings") == Kind.LocalProject, "Local project grant (en)");
+        Check(ApprovalRules.Classify("始终允许 , 仅适用于本次会话") == Kind.Session, "Session-scoped always allow (zh)");
+        Check(ApprovalRules.Classify("始终允许，仅适用于本次会话 Ctrl+Shift+⏎") == Kind.Session, "Session-scoped always allow with shortcut");
+        Check(ApprovalRules.Classify("Always allow, only for this session") == Kind.Session, "Session-scoped always allow (en)");
         Check(ApprovalRules.Classify("始终允许 , 保存到用户设置") == Kind.None, "User-wide grant is never chosen");
         Check(ApprovalRules.Classify("Always allow, save to project settings") == Kind.None, "Shared project grant is never chosen");
         Check(ApprovalRules.Classify("更多允许选项") == Kind.None, "Dropdown arrow is not a choice");
