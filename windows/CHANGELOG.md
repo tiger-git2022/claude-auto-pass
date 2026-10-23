@@ -1,5 +1,19 @@
 # Windows 版更新记录 / Windows Changelog
 
+## 1.1.1
+
+### 中文
+
+- 新增后台扫描记录 `%AppData%\ClaudeAutoPass\scan-log.txt`：看到「始终允许」「允许一次」这类按钮却没有点时，记下原因（不像审批卡片、按钮不可用、按下失败等），也记录很慢的扫描和扫描出错，方便排查偶尔不点的问题。同一条一分钟内只记一次，文件超过 512 KB 自动换新。
+- 「导出按钮文字（诊断）」会列出审批按钮每一层上级里的按钮，并附上最近的扫描记录。
+- 修复更新后退出时偶尔崩溃（托盘图标已释放后又刷新）。
+
+### English
+
+- Adds a background scan log at `%AppData%\ClaudeAutoPass\scan-log.txt`: when an “Always allow” or “Allow once” style button is seen but not pressed, it records why (not a prompt, disabled, press failed…), plus slow scans and scan errors, to track down prompts that are occasionally skipped. Repeats are logged once a minute; the file rolls over at 512 KB.
+- “Export button labels (diagnostics)” now shows the buttons at each parent level of approval buttons and appends the recent scan log.
+- Fixes an occasional crash on exit after an update (the tray icon was refreshed after it was disposed).
+
 ## 1.1.0
 
 ### 中文
