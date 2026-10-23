@@ -123,3 +123,46 @@ namespace ClaudeAutoPass
         public static string Stamp() => DateTime.Now.ToString("MM-dd HH:mm", CultureInfo.InvariantCulture);
     }
 }
+
+namespace ClaudeAutoPass
+{
+    /// <summary>
+    /// Background log in %AppData%\ClaudeAutoPass\scan-log.txt: clicks, approval buttons that were seen but not
+    /// pressed (and why), slow scans and scan errors. Repeats of the same line are dropped for a minute.
+    /// </summary>
+    static class ScanLog
+    {
+        const long MaxBytes = 512 * 1024;
+        static readonly System.Collections.Generic.Dictionary<string, DateTime> recent = new System.Collections.Generic.Dictionary<string, DateTime>();
+        static readonly object gate = new object();
+
+        public static string Path => System.IO.Path.Combine(AppInfo.DataDir, "scan-log.txt");
+
+        public static void Write(string line, bool dedupe = true)
+        {
+            lock (gate)
+            {
+                DateTime now = DateTime.Now;
+                if (dedupe)
+                {
+                    if (recent.TryGetValue(line, out DateTime last) && (now - last).TotalSeconds < 60) return;
+                    recent[line] = now;
+                    if (recent.Count > 200) recent.Clear();
+                }
+                try
+                {
+                    string path = Path;
+                    var info = new System.IO.FileInfo(path);
+                    if (info.Exists && info.Length > MaxBytes)
+                    {
+                        string old = System.IO.Path.Combine(AppInfo.DataDir, "scan-log.old.txt");
+                        System.IO.File.Delete(old);
+                        System.IO.File.Move(path, old);
+                    }
+                    System.IO.File.AppendAllText(path, now.ToString("MM-dd HH:mm:ss") + " " + line + "\r\n");
+                }
+                catch (Exception) { }
+            }
+        }
+    }
+}

@@ -14,6 +14,8 @@ namespace ClaudeAutoPass
         public string Label;
         public int ClaudeWindows;
         public int Buttons;
+        /// <summary>Why approval-like buttons were not pressed this scan (written to scan-log.txt).</summary>
+        public readonly List<string> Notes = new List<string>();
     }
 
     /// <summary>
@@ -117,15 +119,22 @@ namespace ClaudeAutoPass
                 {
                     if (ApprovalRules.Rank(c.Kind) == 0) continue;
                     if (best != null && ApprovalRules.Rank(c.Kind) <= ApprovalRules.Rank(best.Kind)) continue;
-                    if (!CachedEnabled(c.Element) || !ids.Contains(CachedProcessId(c.Element))) continue;
+                    if (!CachedEnabled(c.Element)) { result.Notes.Add($"未点：按钮不可用 / disabled \"{c.Label}\""); continue; }
+                    if (!ids.Contains(CachedProcessId(c.Element))) { result.Notes.Add($"未点：进程不符 / other process \"{c.Label}\""); continue; }
                     if (InApprovalGroup(c.Element, root)) best = c;
+                    else result.Notes.Add($"未点：不像审批卡片 / not a prompt \"{c.Label}\" {AncestorSummary(c.Element, root)}");
                 }
                 if (best != null && best.Kind == Kind.Session) break;
             }
-            if (best != null && act && Press(best.Element))
+            if (best != null && act)
             {
-                result.Clicked = best.Kind;
-                result.Label = best.Label;
+                string how = Press(best.Element);
+                if (how.StartsWith("ok", StringComparison.Ordinal))
+                {
+                    result.Clicked = best.Kind;
+                    result.Label = best.Label;
+                }
+                else result.Notes.Add($"未点：按下失败 / press failed \"{best.Label}\" {how}");
             }
             return result;
         }
@@ -164,23 +173,40 @@ namespace ClaudeAutoPass
             return false;
         }
 
-        static bool Press(IUIAutomationElement element)
+        /// <summary>"ok ..." when pressed, otherwise why not.</summary>
+        static string Press(IUIAutomationElement element)
         {
             try
             {
                 if (element.GetCurrentPattern(InvokePattern) is IUIAutomationInvokePattern invoke)
                 {
                     invoke.Invoke();
-                    return true;
+                    return "ok invoke";
                 }
                 if (element.GetCurrentPattern(LegacyIAccessiblePattern) is IUIAutomationLegacyIAccessiblePattern legacy)
                 {
                     legacy.DoDefaultAction();
-                    return true;
+                    return "ok legacy";
                 }
+                return "no invoke pattern";
             }
-            catch (COMException) { }
-            return false;
+            catch (COMException ex) { return "COM 0x" + ex.HResult.ToString("X8"); }
+        }
+
+        /// <summary>Approval-like button kinds at each parent level, e.g. "[LocalProject | LocalProject | Deny,LocalProject]".</summary>
+        string AncestorSummary(IUIAutomationElement element, IUIAutomationElement windowRoot)
+        {
+            var levels = new List<string>();
+            IUIAutomationElement current = element;
+            for (int distance = 0; distance < MaxGroupDistance + 3; distance++)
+            {
+                try { current = walker.GetParentElement(current); }
+                catch (COMException) { break; }
+                if (current == null || uia.CompareElements(current, windowRoot) != 0) { levels.Add("root"); break; }
+                List<Candidate> found = Buttons(current);
+                levels.Add(found.Count + ":" + string.Join(",", found.Where(b => b.Kind != Kind.None).Select(b => b.Kind.ToString())));
+            }
+            return "[" + string.Join(" | ", levels) + "]";
         }
 
         static string CachedName(IUIAutomationElement e)
@@ -228,6 +254,7 @@ namespace ClaudeAutoPass
                 {
                     string group = ApprovalRules.Rank(c.Kind) > 0 ? (InApprovalGroup(c.Element, root) ? " [审批组 / group]" : " [单独 / isolated]") : "";
                     sb.AppendLine($"  - \"{c.Label}\" → {c.Kind}{group}{(CachedEnabled(c.Element) ? "" : " (disabled)")}");
+                    if (ApprovalRules.Rank(c.Kind) > 0 || c.Kind == Kind.Deny) sb.AppendLine("      上层按钮数:审批类 / parents: " + AncestorSummary(c.Element, root));
                 }
             }
             return sb.ToString();

@@ -106,6 +106,7 @@ namespace ClaudeAutoPass
 
         void ScanLoop()
         {
+            ScanLog.Write("启动 / started " + AppInfo.Version, false);
             Scanner scanner = null;
             while (running)
             {
@@ -115,11 +116,17 @@ namespace ClaudeAutoPass
                     if (settings.Enabled && !locked)
                     {
                         scanner = scanner ?? new Scanner();
+                        var watch = Stopwatch.StartNew();
                         ScanResult result = scanner.ScanOnce();
+                        watch.Stop();
+                        if (result.ClaudeWindows != claudeWindows) ScanLog.Write($"Claude 窗口 / windows: {result.ClaudeWindows}，按钮 / buttons: {result.Buttons}", false);
                         claudeWindows = result.ClaudeWindows;
                         scanError = null;
+                        if (watch.Elapsed.TotalSeconds >= 3) ScanLog.Write($"扫描很慢 / slow scan: {watch.Elapsed.TotalSeconds:F1}s，按钮 / buttons: {result.Buttons}", false);
+                        foreach (string note in result.Notes) ScanLog.Write(note);
                         if (result.Clicked != Kind.None)
                         {
+                            ScanLog.Write($"已点 / pressed \"{result.Label}\" ({watch.Elapsed.TotalSeconds:F1}s)", false);
                             settings.LastAction = ApprovalRules.Describe(result.Clicked) + " · " + Autostart.Stamp() + " · " + result.Label;
                             wait = CooldownMs;
                             ui.Post(_ => Refresh(), null);
@@ -130,6 +137,7 @@ namespace ClaudeAutoPass
                 {
                     // UI Automation calls can fail while windows close; start over with a fresh client.
                     scanError = ex.GetType().Name;
+                    ScanLog.Write("扫描出错 / scan error: " + ex.GetType().Name + " " + ex.Message);
                     scanner = null;
                     wait = 3000;
                 }
@@ -139,6 +147,8 @@ namespace ClaudeAutoPass
 
         void Refresh()
         {
+            // A refresh posted by the scan loop can arrive after exit (e.g. right after an update) when the icon is disposed.
+            if (!running) return;
             bool on = settings.Enabled;
             string state = StateText();
             tray.Icon = on ? iconOn : iconOff;
@@ -174,6 +184,15 @@ namespace ClaudeAutoPass
             string path = Path.Combine(AppInfo.DataDir, "diagnostics.txt");
             report = (report ?? "诊断超时 / Diagnostics timed out")
                 + "\r\n\r\n== 右键菜单尺寸 / Tray menu layout\r\n" + (menu.Layout ?? "").Replace("\n", "\r\n");
+            try
+            {
+                if (File.Exists(ScanLog.Path))
+                {
+                    string[] lines = File.ReadAllLines(ScanLog.Path);
+                    report += "\r\n\r\n== 最近扫描记录 / Recent scan log (" + ScanLog.Path + ")\r\n" + string.Join("\r\n", lines.Skip(Math.Max(0, lines.Length - 80)));
+                }
+            }
+            catch (Exception) { }
             File.WriteAllText(path, report);
             Open(path);
         }
