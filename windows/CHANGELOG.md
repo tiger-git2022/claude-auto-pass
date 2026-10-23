@@ -1,5 +1,15 @@
 # Windows 版更新记录 / Windows Changelog
 
+## 1.1.2
+
+### 中文
+
+- 修复代码页卡片上「始终允许 , 仅适用于本次会话」不点：这个选项只在本次会话有效，现在按「本次会话」处理并优先点它。「保存到用户设置」「保存到项目设置」依然不点。
+
+### English
+
+- Fixes Code cards whose button reads “Always allow, only for this session”: it is session-scoped, so it is now treated as a session approval and preferred. “Save to user settings” and “save to project settings” are still never pressed.
+
 ## 1.1.1
 
 ### 中文

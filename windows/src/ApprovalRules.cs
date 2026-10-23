@@ -56,6 +56,11 @@ namespace ClaudeAutoPass
             @"^(?:始终允许|始終允許|一律允許|always allow)\s*[,、:]?\s*\(?\s*(?:保存到本地项目设置|保存至本地项目设置|保存到本地項目設置|儲存到本機專案設定|儲存至本機專案設定|save to local project settings|saved to local project settings|save in local project settings)\s*\)?$",
             RegexOptions.CultureInvariant);
 
+        // "始终允许 , 仅适用于本次会话" / "Always allow, only for this session": Claude Desktop's Code card scoped to the session.
+        static readonly Regex SessionScopedLabel = new Regex(
+            @"^(?:始终允许|始終允許|一律允許|always allow)\s*[,、:]?\s*\(?\s*(?:仅适用于本次会话|仅适用于此会话|仅限本次会话|僅適用於本次工作階段|僅適用於此工作階段|僅適用於本次會話|only for this session|for this session only|this session only|only this session)\s*\)?$",
+            RegexOptions.CultureInvariant);
+
         const string KeyToken = @"(?:ctrl|control|alt|shift|enter|return|esc|escape|cmd|⌘|⌥|⇧|⌃|⏎|↵|↩)";
         // Trailing keyboard hints that Electron apps sometimes put into a button's accessible name,
         // e.g. "Deny Esc", "Allow once ⏎", "Allow once (Ctrl+Enter)".
@@ -75,7 +80,7 @@ namespace ClaudeAutoPass
         public static Kind Classify(string label)
         {
             string text = Normalize(label);
-            if (SessionLabels.Contains(text)) return Kind.Session;
+            if (SessionLabels.Contains(text) || SessionScopedLabel.IsMatch(text)) return Kind.Session;
             if (OnceLabels.Contains(text)) return Kind.Once;
             if (DenyLabels.Contains(text)) return Kind.Deny;
             if (LocalProjectLabel.IsMatch(text)) return Kind.LocalProject;
