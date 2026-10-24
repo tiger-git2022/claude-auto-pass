@@ -64,7 +64,8 @@ namespace ClaudeAutoPass
                 IntPtr foreground = GetForegroundWindow();
                 foreach (IntPtr h in new List<IntPtr>(Hidden.Keys))
                 {
-                    if (!Native.IsWindowVisible(h)) { Hidden.Remove(h); continue; }
+                    // Closed. A window Claude only hid (to its tray) stays tracked, so it still comes back on-screen.
+                    if (!IsWindow(h)) { Hidden.Remove(h); continue; }
                     // Claude may activate itself when restored from minimized; give that a moment to settle.
                     if (h == foreground && (DateTime.UtcNow - hiddenAt).TotalSeconds > 2)
                     {
@@ -81,11 +82,13 @@ namespace ClaudeAutoPass
             WINDOWPLACEMENT original = Hidden[h];
             Hidden.Remove(h);
             original.flags = 0;
-            original.showCmd = original.showCmd == ShowMaximized ? ShowMaximized : activate ? ShowNormal : ShowNoActivate;
+            // A window Claude has hidden to its tray gets its place back but stays hidden.
+            original.showCmd = !Native.IsWindowVisible(h) ? HideWindow
+                : original.showCmd == ShowMaximized ? ShowMaximized : activate ? ShowNormal : ShowNoActivate;
             SetWindowPlacement(h, ref original);
         }
 
-        const int ShowNormal = 1, ShowMaximized = 3, ShowNoActivate = 4;
+        const int HideWindow = 0, ShowNormal = 1, ShowMaximized = 3, ShowNoActivate = 4;
 
         [StructLayout(LayoutKind.Sequential)] struct RECT { public int Left, Top, Right, Bottom; }
         [StructLayout(LayoutKind.Sequential)] struct POINT { public int X, Y; }
@@ -101,5 +104,6 @@ namespace ClaudeAutoPass
         [DllImport("user32.dll")] static extern bool GetWindowPlacement(IntPtr hwnd, ref WINDOWPLACEMENT placement);
         [DllImport("user32.dll")] static extern bool SetWindowPlacement(IntPtr hwnd, ref WINDOWPLACEMENT placement);
         [DllImport("user32.dll")] static extern IntPtr GetForegroundWindow();
+        [DllImport("user32.dll")] static extern bool IsWindow(IntPtr hwnd);
     }
 }
