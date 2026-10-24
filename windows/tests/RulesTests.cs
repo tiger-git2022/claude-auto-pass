@@ -66,11 +66,17 @@ static class RulesTests
         Check(SteamRules.IsGateText("频繁的裸露画面或色情内容"), "Steam blocked-content reason (zh)");
         Check(SteamRules.IsGateText("By clicking View Item you confirm you are at least 18 years old."), "Steam age text (en)");
         Check(!SteamRules.IsGateText("添加一条留言") && !SteamRules.IsGateText("赞"), "Steam: ordinary text");
-        var gate = new List<string> { "该物品包含您要求屏蔽的内容：", "频繁的裸露画面或色情内容", "点击下方的“查看”按钮即表示您确认自己已至少年满 18 周岁。", "查看物品", "查看物品", "取消", "取消", "更新内容偏好" };
-        Check(SteamRules.IsGate(gate), "Steam gate box");
-        Check(!SteamRules.IsGate(new List<string> { "查看物品", "取消" }), "Steam: buttons without age text");
-        Check(!SteamRules.IsGate(new List<string> { "查看物品", "频繁的裸露画面或色情内容" }), "Steam: no cancel button");
-        Check(!SteamRules.IsGate(new List<string>(gate) { "查看物品" }), "Steam: box also holds another view button");
+        // Layout from the screenshot (physical pixels): buttons side by side, age text just above.
+        var view = new Box(1388, 985, 1590, 1052);
+        var cancel = new Box(1637, 985, 1772, 1052);
+        var ageText = new Box(1208, 902, 1945, 932);
+        Check(SteamRules.IsButtonPair(view, cancel), "Steam: cancel beside view");
+        Check(SteamRules.IsAbove(SteamRules.Union(view, cancel), ageText), "Steam: age text above the buttons");
+        Check(!SteamRules.IsButtonPair(view, new Box(1637, 1300, 1772, 1367)), "Steam: cancel on another row");
+        Check(!SteamRules.IsButtonPair(view, new Box(2400, 985, 2535, 1052)), "Steam: cancel far away");
+        Check(!SteamRules.IsButtonPair(view, default(Box)), "Steam: hidden cancel");
+        Check(!SteamRules.IsAbove(SteamRules.Union(view, cancel), new Box(1208, 1100, 1945, 1130)), "Steam: text below the buttons");
+        Check(!SteamRules.IsAbove(SteamRules.Union(view, cancel), new Box(1208, 100, 1945, 130)), "Steam: text far above");
         Check(SteamRules.IsTargetProcess("steamwebhelper") && SteamRules.IsTargetProcess("msedge") && SteamRules.IsTargetProcess("Chrome"), "Steam and browser processes");
         Check(!SteamRules.IsTargetProcess("claude") && !SteamRules.IsTargetProcess("explorer"), "Steam: other processes");
         Check(SteamRules.IsSteamPageTitle("Steam 创意工坊::Wallpaper - 个人 - Microsoft Edge") && SteamRules.IsSteamPageTitle("Steam Community :: Item"), "Steam page titles");

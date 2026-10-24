@@ -8,7 +8,7 @@ namespace ClaudeAutoPass
     /// <summary>
     /// Rules for Steam Workshop's adult-content gate ("该物品包含您要求屏蔽的内容 … 查看物品 / 取消"), shown on
     /// steamcommunity.com in the Steam client or a browser. Only the gate's "view" button is pressed, and only when
-    /// the same box also has a cancel button and the 18+ / mature-content text, so other "查看" buttons stay alone.
+    /// a cancel button sits right next to it and the 18+ / mature-content text right above, so other "查看" buttons stay alone.
     /// </summary>
     public static class SteamRules
     {
@@ -58,20 +58,39 @@ namespace ClaudeAutoPass
         }
 
         /// <summary>
-        /// The gate box: the age / blocked-content text and its two buttons. The box holds as many "view" labels as "cancel"
-        /// labels (both buttons are built alike), so a box that also takes in some other "查看物品" on the page is rejected.
+        /// "取消" sits on the same row as "查看物品", right next to it (screen pixels). Steam's buttons are plain clickable
+        /// boxes whose UI Automation parents don't reliably frame the dialog, so the gate is recognised by layout instead.
         /// </summary>
-        public static bool IsGate(IEnumerable<string> texts)
+        public static bool IsButtonPair(Box view, Box cancel)
         {
-            int view = 0, cancel = 0;
-            bool gate = false;
-            foreach (string text in texts)
-            {
-                if (IsViewLabel(text)) view++;
-                else if (IsCancelLabel(text)) cancel++;
-                else if (IsGateText(text)) gate = true;
-            }
-            return view > 0 && view == cancel && gate;
+            if (view.IsEmpty || cancel.IsEmpty) return false;
+            int tolerance = Math.Max(12, Math.Max(view.Height, cancel.Height));
+            if (Math.Abs(view.CenterY - cancel.CenterY) > tolerance) return false;
+            int gap = cancel.Left >= view.Left ? cancel.Left - view.Right : view.Left - cancel.Right;
+            return gap >= -4 && gap <= 400;
         }
+
+        /// <summary>The 18+ / blocked-content text is just above the two buttons, roughly centred over them.</summary>
+        public static bool IsAbove(Box buttons, Box text)
+        {
+            if (buttons.IsEmpty || text.IsEmpty) return false;
+            int distance = buttons.Top - text.Bottom;
+            return distance >= -4 && distance <= 500 && text.CenterX >= buttons.Left - 700 && text.CenterX <= buttons.Right + 700;
+        }
+
+        public static Box Union(Box a, Box b) => new Box(Math.Min(a.Left, b.Left), Math.Min(a.Top, b.Top), Math.Max(a.Right, b.Right), Math.Max(a.Bottom, b.Bottom));
+    }
+
+    /// <summary>A screen rectangle in pixels.</summary>
+    public struct Box
+    {
+        public readonly int Left, Top, Right, Bottom;
+        public Box(int left, int top, int right, int bottom) { Left = left; Top = top; Right = right; Bottom = bottom; }
+        public int Width => Right - Left;
+        public int Height => Bottom - Top;
+        public int CenterX => (Left + Right) / 2;
+        public int CenterY => (Top + Bottom) / 2;
+        public bool IsEmpty => Width <= 0 || Height <= 0;
+        public override string ToString() => $"({Left},{Top} {Width}x{Height})";
     }
 }

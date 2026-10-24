@@ -11,19 +11,21 @@ namespace ClaudeAutoPass
     /// <summary>
     /// Presses "查看物品 / View Item" on Steam Workshop's adult-content gate, in the Steam client or a browser, through
     /// UI Automation (no mouse movement). Steam draws these buttons as links or plain clickable boxes, so any element with
-    /// the exact label counts, and the press falls back from the element to its clickable parent. Must run on an MTA thread.
+    /// the exact label counts, the gate is recognised by layout ("取消" beside it, the 18+ text above), and the press falls
+    /// back from the label to its clickable parent. Must run on an MTA thread.
     /// </summary>
     sealed class SteamGateScanner
     {
+        const int BoundingRectangleProperty = 30001;
         const int NameProperty = 30005;
+        const int TextControlType = 50020;
         const int ControlTypeProperty = 30003;
         const int InvokePattern = 10000;
         const int LegacyIAccessiblePattern = 10018;
-        const int MaxGateDistance = 8;
-        const int MaxTexts = 400;
+        const int MaxTexts = 5000;
 
         readonly IUIAutomation uia;
-        readonly IUIAutomationCondition viewCondition, cancelCondition;
+        readonly IUIAutomationCondition viewCondition, cancelCondition, textCondition;
         readonly IUIAutomationCacheRequest cache;
         readonly IUIAutomationTreeWalker walker;
         readonly Func<string, bool> isTarget;
@@ -39,6 +41,8 @@ namespace ClaudeAutoPass
             cache = uia.CreateCacheRequest();
             cache.AddProperty(NameProperty);
             cache.AddProperty(ControlTypeProperty);
+            cache.AddProperty(BoundingRectangleProperty);
+            textCondition = uia.CreatePropertyCondition(ControlTypeProperty, TextControlType);
             walker = uia.ControlViewWalker;
             titleFilter = SteamRules.IsSteamPageTitle;
         }
@@ -87,18 +91,19 @@ namespace ClaudeAutoPass
                 try { root = uia.ElementFromHandle(window.Handle); }
                 catch (COMException) { continue; }
                 if (root == null) continue;
-                IUIAutomationElementArray found;
-                try { found = root.FindAllBuildCache(TreeScope.TreeScope_Descendants, viewCondition, cache); }
-                catch (COMException) { continue; }
-                if (found == null) continue;
-                for (int i = 0; i < found.Length; i++)
+                List<IUIAutomationElement> views = Find(root, viewCondition);
+                if (views.Count == 0) continue;
+                List<IUIAutomationElement> cancels = Find(root, cancelCondition);
+                List<IUIAutomationElement> texts = null;
+                foreach (IUIAutomationElement view in views)
                 {
-                    IUIAutomationElement view = found.GetElement(i);
                     string label = Cached(view);
                     if (!SteamRules.IsViewLabel(label)) continue;
-                    if (FindGate(view, root) == null)
+                    texts = texts ?? (cancels.Count > 0 ? Find(root, textCondition) : new List<IUIAutomationElement>());
+                    string why = WhyNotGate(view, cancels, texts);
+                    if (why != null)
                     {
-                        notes?.Add($"Steam 未点：不像年龄提示 / not a gate \"{label}\" \"{window.Title}\"");
+                        notes?.Add($"Steam 未点：不像年龄提示 / not a gate \"{label}\" {why} \"{window.Title}\"");
                         continue;
                     }
                     if (!act) return label;
@@ -110,40 +115,40 @@ namespace ClaudeAutoPass
             return null;
         }
 
-        /// <summary>The nearest ancestor (below the window) that holds the cancel button and the 18+ text, or null.</summary>
-        IUIAutomationElement FindGate(IUIAutomationElement view, IUIAutomationElement windowRoot)
+        List<IUIAutomationElement> Find(IUIAutomationElement root, IUIAutomationCondition condition)
         {
-            IUIAutomationElement current = view;
-            for (int distance = 0; distance < MaxGateDistance; distance++)
+            var list = new List<IUIAutomationElement>();
+            try
             {
-                try { current = walker.GetParentElement(current); }
-                catch (COMException) { return null; }
-                if (current == null || uia.CompareElements(current, windowRoot) != 0) return null;
-                IUIAutomationElement cancel;
-                try { cancel = current.FindFirst(TreeScope.TreeScope_Descendants, cancelCondition); }
-                catch (COMException) { return null; }
-                if (cancel == null) continue;
-                if (SteamRules.IsGate(Texts(current))) return current;
+                IUIAutomationElementArray array = root.FindAllBuildCache(TreeScope.TreeScope_Descendants, condition, cache);
+                int n = Math.Min(array?.Length ?? 0, MaxTexts);
+                for (int i = 0; i < n; i++) list.Add(array.GetElement(i));
             }
+            catch (COMException) { }
+            return list;
+        }
+
+        /// <summary>Null when "取消" is right next to the button and the 18+ text right above them; otherwise why not.</summary>
+        static string WhyNotGate(IUIAutomationElement view, List<IUIAutomationElement> cancels, List<IUIAutomationElement> texts)
+        {
+            Box at = Rect(view);
+            if (at.IsEmpty) return "隐藏 / hidden";
+            IUIAutomationElement cancel = cancels.FirstOrDefault(c => SteamRules.IsCancelLabel(Cached(c)) && SteamRules.IsButtonPair(at, Rect(c)));
+            if (cancel == null) return $"旁边没有取消 / no cancel beside {at}";
+            Box buttons = SteamRules.Union(at, Rect(cancel));
+            if (!texts.Any(t => SteamRules.IsGateText(Cached(t)) && SteamRules.IsAbove(buttons, Rect(t))))
+                return $"上方没有年龄提示 / no age text above {buttons}";
             return null;
         }
 
-        /// <summary>Names of the box's elements (button labels and the text above them).</summary>
-        List<string> Texts(IUIAutomationElement scope)
+        static Box Rect(IUIAutomationElement e)
         {
-            var texts = new List<string>();
             try
             {
-                IUIAutomationElementArray all = scope.FindAllBuildCache(TreeScope.TreeScope_Descendants, uia.CreateTrueCondition(), cache);
-                int n = Math.Min(all?.Length ?? 0, MaxTexts);
-                for (int i = 0; i < n; i++)
-                {
-                    string name = Cached(all.GetElement(i));
-                    if (name.Length > 0) texts.Add(name);
-                }
+                tagRECT r = e.CachedBoundingRectangle;
+                return new Box(r.left, r.top, r.right, r.bottom);
             }
-            catch (COMException) { }
-            return texts;
+            catch (COMException) { return default(Box); }
         }
 
         /// <summary>
@@ -178,6 +183,11 @@ namespace ClaudeAutoPass
             return string.Join(" ", tried);
         }
 
+        static int Type(IUIAutomationElement e)
+        {
+            try { return e.CachedControlType; } catch (COMException) { return 0; }
+        }
+
         static string Cached(IUIAutomationElement e)
         {
             try { return e.CachedName ?? ""; } catch (COMException) { return ""; }
@@ -198,15 +208,32 @@ namespace ClaudeAutoPass
                 try { total = root.FindAll(TreeScope.TreeScope_Descendants, uia.CreateTrueCondition())?.Length ?? 0; }
                 catch (COMException) { }
                 sb.AppendLine($"== 0x{w.Handle.ToInt64():X} \"{w.Title}\" class={w.ClassName} 元素 / elements: {total}");
-                IUIAutomationElementArray found = null;
-                try { found = root.FindAllBuildCache(TreeScope.TreeScope_Descendants, viewCondition, cache); }
-                catch (COMException) { }
-                for (int i = 0; i < (found?.Length ?? 0); i++)
+                List<IUIAutomationElement> views = Find(root, viewCondition);
+                List<IUIAutomationElement> cancels = Find(root, cancelCondition);
+                List<IUIAutomationElement> texts = views.Count > 0 ? Find(root, textCondition) : new List<IUIAutomationElement>();
+                foreach (IUIAutomationElement e in views.Concat(cancels))
+                    sb.AppendLine($"  - \"{Cached(e)}\" type={Type(e)} {Rect(e)}"
+                        + (SteamRules.IsViewLabel(Cached(e)) ? " " + (WhyNotGate(e, cancels, texts) ?? "[年龄提示 / gate]") : ""));
+                foreach (IUIAutomationElement t in texts.Where(t => SteamRules.IsGateText(Cached(t))))
+                    sb.AppendLine($"  · 提示文字 / text \"{Cached(t)}\" {Rect(t)}");
+                foreach (IUIAutomationElement e in views)
                 {
-                    IUIAutomationElement e = found.GetElement(i);
-                    int type = 0;
-                    try { type = e.CachedControlType; } catch (COMException) { }
-                    sb.AppendLine($"  - \"{Cached(e)}\" type={type} {(FindGate(e, root) != null ? "[年龄提示 / gate]" : "[不是年龄提示 / not a gate]")}");
+                    sb.AppendLine($"  上层 / parents of \"{Cached(e)}\" {Rect(e)}:");
+                    IUIAutomationElement current = e;
+                    for (int level = 0; level < 5 && current != null; level++)
+                    {
+                        string action = "";
+                        try
+                        {
+                            if ((object)current.GetCurrentPattern(InvokePattern) != null) action += " invoke";
+                            if (current.GetCurrentPattern(LegacyIAccessiblePattern) is IUIAutomationLegacyIAccessiblePattern legacy) action += " default=\"" + legacy.CurrentDefaultAction + "\"";
+                            string name = current.CurrentName ?? "";
+                            sb.AppendLine($"    {level}: type={current.CurrentControlType} name=\"{(name.Length > 40 ? name.Substring(0, 40) + "…" : name)}\"{action}");
+                            current = walker.GetParentElement(current);
+                        }
+                        catch (COMException) { break; }
+                        if (current != null && uia.CompareElements(current, root) != 0) break;
+                    }
                 }
             }
             return sb.ToString();
