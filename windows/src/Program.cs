@@ -72,17 +72,18 @@ namespace ClaudeAutoPass
                 var scanner = new Scanner(name => string.Equals(name, processName, StringComparison.OrdinalIgnoreCase));
                 var watch = Stopwatch.StartNew();
                 ScanResult result = null;
+                var parker = new BackParker();
+                var notes = new System.Collections.Generic.List<string>();
                 while (watch.Elapsed.TotalSeconds < seconds)
                 {
                     if (restoreMinimized)
-                        foreach (Native.Window w in scanner.TargetWindows())
-                            if (w.Visible) Native.RestoreBehind(w.Handle);
+                        foreach (string note in parker.Tick(scanner.TargetWindows())) notes.Add($"{watch.Elapsed.TotalSeconds:F1}s {note}");
                     result = scanner.ScanOnce();
                     if (result.Clicked != Kind.None) break;
                     Thread.Sleep(500);
                 }
                 code = result?.Clicked == Kind.Session ? 0 : result?.Clicked == Kind.Once ? 2 : result?.Clicked == Kind.LocalProject ? 3 : 1;
-                log = $"clicked={result?.Clicked} label=\"{result?.Label}\" windows={result?.ClaudeWindows} buttons={result?.Buttons} after={watch.Elapsed.TotalSeconds:F1}s\n\n"
+                log = $"clicked={result?.Clicked} label=\"{result?.Label}\" windows={result?.ClaudeWindows} buttons={result?.Buttons} after={watch.Elapsed.TotalSeconds:F1}s\n" + string.Join("\n", notes) + "\n\n"
                       + scanner.Diagnose();
             });
             File.WriteAllText(output, log);

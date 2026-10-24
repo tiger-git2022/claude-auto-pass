@@ -79,20 +79,21 @@ jobs:
             Get-Process msedge -ErrorAction SilentlyContinue | Where-Object { $_.MainWindowHandle -ne 0 } | ForEach-Object {
               $h = $_.MainWindowHandle
               # Claude Desktop minimized: checks the page is still read and pressed while the window is an icon.
-              if ($mode -eq 'minimize') { [void][Win.User]::ShowWindow($h, 6) }
+              if ($mode -like 'minimize*') { [void][Win.User]::ShowWindow($h, 6) }
               # Moved off every screen (x/y far outside the desktop), size and z-order kept.
               if ($mode -eq 'offscreen') { [void][Win.User]::SetWindowPos($h, [IntPtr]::Zero, 20000, 20000, 0, 0, 0x0001 -bor 0x0004 -bor 0x0010) }
               Start-Sleep 2
               Write-Host "$mode $($_.MainWindowTitle): iconic=$([Win.User]::IsIconic($h))"
             }
             # Fully covered by another (maximized, topmost) window.
-            if ($mode -eq 'cover') {
+            if ($mode -like '*cover') {
               $cover = Start-Process pwsh -PassThru -ArgumentList '-NoProfile', '-Command', 'Add-Type -AssemblyName System.Windows.Forms; $f = New-Object Windows.Forms.Form; $f.Text = "cover"; $f.TopMost = $true; $f.WindowState = "Maximized"; [Windows.Forms.Application]::Run($f)'
               Start-Sleep 4
             }
             $out = "$env:RUNNER_TEMP/selftest-edge-$name.txt"
             $p = Start-Process dist/claude-auto-pass.exe -ArgumentList (@('--self-test-process', 'msedge', '30', $out) + $toolArgs) -Wait -PassThru
             Start-Sleep 2
+            $script:iconicAfter = @(Get-Process msedge -ErrorAction SilentlyContinue | Where-Object { $_.MainWindowHandle -ne 0 } | ForEach-Object { [Win.User]::IsIconic($_.MainWindowHandle) }) -contains $true
             if ($cover) { Stop-Process -Id $cover.Id -Force -ErrorAction SilentlyContinue }
             $titles = (Get-Process msedge -ErrorAction SilentlyContinue | Where-Object MainWindowTitle | ForEach-Object MainWindowTitle) -join ', '
             Write-Host "== Edge $name : exit=$($p.ExitCode) titles=[$titles]"
@@ -120,8 +121,12 @@ jobs:
           Write-Host "Prompt after minimizing (expected to fail): $late"
           # Required: covered by another window.
           $lateCover = Run-Edge 'late-cover' @('--force-renderer-accessibility') 'prompt-late.html' 0 'CLICKED-SESSION' 'cover'
-          # Required: minimized, with "put minimized Claude windows behind the others" on.
-          $lateBack = Run-Edge 'late-restore' @('--force-renderer-accessibility') 'prompt-late.html' 0 'CLICKED-SESSION' 'minimize' @('--restore-minimized')
+          # Required: minimized, then covered, with "put minimized Claude windows at the back" on: restored behind and pressed.
+          $lateBack = Run-Edge 'late-restore' @('--force-renderer-accessibility') 'prompt-late.html' 0 'CLICKED-SESSION' 'minimize-cover' @('--restore-minimized')
+          # Required: same switch, nothing covering the window: it must stay minimized (nothing pops up on the desktop).
+          $uncovered = Run-Edge 'restore-uncovered' @('--force-renderer-accessibility') 'prompt-late.html' 1 '.' 'minimize' @('--restore-minimized')
+          $stayed = $uncovered -and $script:iconicAfter
+          Write-Host "Uncovered window stayed minimized: $stayed"
           Get-Process msedge -ErrorAction SilentlyContinue | Stop-Process -Force
           # Steam Workshop adult-content gate: presses the clickable "查看物品" box, not the decoy or "取消".
           $page = [Uri]::new((Resolve-Path 'windows/tests/steam-gate.html').Path).AbsoluteUri
@@ -142,6 +147,7 @@ jobs:
           if (-not $minimized) { Write-Error 'Edge minimized self-test failed'; exit 1 }
           if (-not $lateCover) { Write-Error 'Edge covered-window self-test failed'; exit 1 }
           if (-not $lateBack) { Write-Error 'Edge restore-minimized self-test failed'; exit 1 }
+          if (-not $stayed) { Write-Error 'Uncovered minimized window was restored'; exit 1 }
       - name: Self-test tray menu (screenshots)
         if: steps.version.outputs.skip != 'true'
         run: |

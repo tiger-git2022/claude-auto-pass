@@ -115,6 +115,7 @@ namespace ClaudeAutoPass
             ScanLog.Write("启动 / started " + AppInfo.Version, false);
             Scanner scanner = null;
             SteamGateScanner steam = null;
+            var parker = new BackParker();
             int tick = 0;
             while (running)
             {
@@ -125,8 +126,7 @@ namespace ClaudeAutoPass
                     {
                         scanner = scanner ?? new Scanner();
                         if (settings.RestoreMinimized)
-                            foreach (Native.Window w in scanner.TargetWindows())
-                                if (w.Visible && Native.RestoreBehind(w.Handle)) ScanLog.Write($"已把最小化的窗口放到最底层 / restored behind other windows \"{w.Title}\"", false);
+                            foreach (string note in parker.Tick(scanner.TargetWindows())) ScanLog.Write(note, false);
                         var watch = Stopwatch.StartNew();
                         ScanResult result = scanner.ScanOnce();
                         watch.Stop();
