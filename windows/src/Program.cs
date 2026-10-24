@@ -22,6 +22,7 @@ namespace ClaudeAutoPass
             if (args.Length >= 2 && args[0] == "--self-test-form") return SelfTest.Form(args[1]);
             if (args.Length >= 2 && args[0] == "--self-test-menu") return SelfTest.Menu(args[1]);
             if (args.Length >= 4 && args[0] == "--self-test-process") return SelfTest.Process(args[1], int.Parse(args[2]), args[3]);
+            if (args.Length >= 4 && args[0] == "--self-test-steam") return SelfTest.Steam(args[1], int.Parse(args[2]), args[3]);
 
             bool updated = args.Contains("--updated");
             using (var mutex = new Mutex(false, @"Local\ClaudeAutoPass"))
@@ -80,6 +81,29 @@ namespace ClaudeAutoPass
                 code = result?.Clicked == Kind.Session ? 0 : result?.Clicked == Kind.Once ? 2 : result?.Clicked == Kind.LocalProject ? 3 : 1;
                 log = $"clicked={result?.Clicked} label=\"{result?.Label}\" windows={result?.ClaudeWindows} buttons={result?.Buttons} after={watch.Elapsed.TotalSeconds:F1}s\n\n"
                       + scanner.Diagnose();
+            });
+            File.WriteAllText(output, log);
+            return code;
+        }
+
+        /// <summary>Scans a browser showing a mock Steam Workshop gate until it presses "查看物品" (exit 0).</summary>
+        public static int Steam(string processName, int seconds, string output)
+        {
+            int code = 1;
+            string log = "";
+            RunMta(() =>
+            {
+                var scanner = new SteamGateScanner(name => string.Equals(name, processName, StringComparison.OrdinalIgnoreCase));
+                var notes = new System.Collections.Generic.List<string>();
+                var watch = Stopwatch.StartNew();
+                string label = null;
+                while (watch.Elapsed.TotalSeconds < seconds && label == null)
+                {
+                    label = scanner.ScanOnce(notes);
+                    if (label == null) Thread.Sleep(500);
+                }
+                code = label != null ? 0 : 1;
+                log = $"pressed=\"{label}\" after={watch.Elapsed.TotalSeconds:F1}s\n" + string.Join("\n", notes.Distinct()) + "\n\n" + scanner.Diagnose();
             });
             File.WriteAllText(output, log);
             return code;
@@ -229,6 +253,7 @@ namespace ClaudeAutoPass
                 new TrayMenu.Entry { Text = "上次：本次会话中始终允许 · 19:30", Icon = Wpf.Ui.Controls.SymbolRegular.History24, Enabled = false },
                 new TrayMenu.Entry { Separator = true },
                 new TrayMenu.Entry { Text = "关闭自动审批", Bold = true, Icon = Wpf.Ui.Controls.SymbolRegular.Pause24, Click = none },
+                new TrayMenu.Entry { Text = "自动确认 Steam 创意工坊年龄提示", Icon = Wpf.Ui.Controls.SymbolRegular.CheckboxChecked24, Click = none },
                 new TrayMenu.Entry { Text = "开机自动启动", Icon = Wpf.Ui.Controls.SymbolRegular.CheckboxChecked24, Click = none },
                 new TrayMenu.Entry { Separator = true },
                 new TrayMenu.Entry { Text = "导出按钮文字（诊断）…", Icon = Wpf.Ui.Controls.SymbolRegular.DocumentSearch24, Click = none },

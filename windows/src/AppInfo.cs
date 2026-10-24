@@ -57,6 +57,13 @@ namespace ClaudeAutoPass
             set => Set("enabled", value ? "1" : "0");
         }
 
+        /// <summary>Also confirm Steam Workshop's adult-content gate (on unless switched off in the tray menu).</summary>
+        public bool SteamGate
+        {
+            get => Get("steam_gate") != "0";
+            set => Set("steam_gate", value ? "1" : "0");
+        }
+
         public string LastAction
         {
             get => Get("last_action");

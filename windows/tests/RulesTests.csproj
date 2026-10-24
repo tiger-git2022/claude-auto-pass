@@ -10,5 +10,6 @@
   </PropertyGroup>
   <ItemGroup>
     <Compile Include="../src/ApprovalRules.cs" Link="ApprovalRules.cs" />
+    <Compile Include="../src/SteamRules.cs" Link="SteamRules.cs" />
   </ItemGroup>
 </Project>

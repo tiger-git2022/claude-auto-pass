@@ -82,6 +82,7 @@ namespace ClaudeAutoPass
                 new TrayMenu.Entry { Text = "上次：" + (string.IsNullOrEmpty(last) ? "暂无" : Shorten(last, 48)), Icon = SymbolRegular.History24, Enabled = false },
                 new TrayMenu.Entry { Separator = true },
                 new TrayMenu.Entry { Text = on ? "关闭自动审批" : "开启自动审批", Bold = true, Icon = on ? SymbolRegular.Pause24 : SymbolRegular.Play24, Click = Later(() => SetEnabled(!on)) },
+                new TrayMenu.Entry { Text = "自动确认 Steam 创意工坊年龄提示", Icon = settings.SteamGate ? SymbolRegular.CheckboxChecked24 : SymbolRegular.CheckboxUnchecked24, Click = Later(() => { settings.SteamGate = !settings.SteamGate; Refresh(); }) },
                 new TrayMenu.Entry { Text = "开机自动启动", Icon = autostart ? SymbolRegular.CheckboxChecked24 : SymbolRegular.CheckboxUnchecked24, Click = Later(ToggleAutostart) },
                 new TrayMenu.Entry { Separator = true },
                 new TrayMenu.Entry { Text = "导出按钮文字（诊断）…", Icon = SymbolRegular.DocumentSearch24, Click = Later(Diagnose) },
@@ -108,6 +109,8 @@ namespace ClaudeAutoPass
         {
             ScanLog.Write("启动 / started " + AppInfo.Version, false);
             Scanner scanner = null;
+            SteamGateScanner steam = null;
+            int tick = 0;
             while (running)
             {
                 int wait = ScanIntervalMs;
@@ -130,6 +133,29 @@ namespace ClaudeAutoPass
                             settings.LastAction = ApprovalRules.Describe(result.Clicked) + " · " + Autostart.Stamp() + " · " + result.Label;
                             wait = CooldownMs;
                             ui.Post(_ => Refresh(), null);
+                        }
+                        // Steam's gate needs no hurry; every other tick keeps the Steam client's UI tree from being walked constantly.
+                        if (settings.SteamGate && tick++ % 2 == 0)
+                        {
+                            try
+                            {
+                                steam = steam ?? new SteamGateScanner();
+                                var notes = new List<string>();
+                                string label = steam.ScanOnce(notes);
+                                foreach (string note in notes) ScanLog.Write(note);
+                                if (label != null)
+                                {
+                                    ScanLog.Write($"Steam 已点 / pressed \"{label}\"", false);
+                                    settings.LastAction = "已确认 Steam 创意工坊 · " + Autostart.Stamp() + " · " + label;
+                                    wait = CooldownMs;
+                                    ui.Post(_ => Refresh(), null);
+                                }
+                            }
+                            catch (Exception ex)
+                            {
+                                ScanLog.Write("Steam 扫描出错 / Steam scan error: " + ex.GetType().Name + " " + ex.Message);
+                                steam = null;
+                            }
                         }
                     }
                 }
@@ -177,6 +203,8 @@ namespace ClaudeAutoPass
             {
                 try { report = new Scanner().Diagnose(); }
                 catch (Exception ex) { report = "诊断失败 / Diagnostics failed: " + ex; }
+                try { report += "\r\n\r\n== Steam 创意工坊年龄提示 / Steam Workshop gate（" + (settings.SteamGate ? "已开启 / on" : "已关闭 / off") + "）\r\n" + new SteamGateScanner().Diagnose(); }
+                catch (Exception ex) { report += "\r\n\r\nSteam 诊断失败 / Steam diagnostics failed: " + ex; }
             });
             thread.SetApartmentState(ApartmentState.MTA);
             thread.Start();

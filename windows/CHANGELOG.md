@@ -1,5 +1,21 @@
 # Windows 版更新记录 / Windows Changelog
 
+## 1.2.0
+
+### 中文
+
+- 新增：自动确认 Steam 创意工坊的成人内容提示（「该物品包含您要求屏蔽的内容 … 查看物品 / 取消」），在 Steam 客户端和浏览器（Edge、Chrome、Firefox 等）里都能用，同样不移动鼠标。
+- 只点提示框里的「查看物品」：同一个框里必须有「取消」和「年满 18 周岁 / 裸露 / 色情」这类文字，页面上别处的「查看」不会点。浏览器只在标题含 Steam 的窗口里找，最小化的窗口不扫描。
+- 右键菜单新增开关「自动确认 Steam 创意工坊年龄提示」，默认开启；关闭自动审批时也一起暂停。
+- 「导出按钮文字（诊断）」会附上 Steam 窗口和找到的「查看物品」按钮，不起作用时用它排查。
+
+### English
+
+- New: confirms Steam Workshop's adult-content gate (“This item contains content you have asked to hide … View Item / Cancel”) automatically, in the Steam client and in browsers (Edge, Chrome, Firefox…), without moving the mouse.
+- Only “View Item” inside the gate is pressed: the same box must also hold “Cancel” and the 18+ / nudity text, so other “View” buttons are left alone. Browser windows are only scanned while their title mentions Steam; minimized windows are skipped.
+- A new tray menu switch, “Auto-confirm Steam Workshop age gate”, is on by default and pauses together with auto-approval.
+- “Export button labels (diagnostics)” now lists Steam windows and the “View Item” buttons found, for troubleshooting.
+
 ## 1.1.2
 
 ### 中文

@@ -91,6 +91,20 @@ jobs:
           # Claude Desktop Code card: only Deny and "Always allow, save to local project settings" (exit code 3).
           $local = Run-Edge 'local' @('--force-renderer-accessibility') 'prompt-local.html' 3 'CLICKED-LOCAL'
           Get-Process msedge -ErrorAction SilentlyContinue | Stop-Process -Force
+          # Steam Workshop adult-content gate: presses the clickable "查看物品" box, not the decoy or "取消".
+          $page = [Uri]::new((Resolve-Path 'windows/tests/steam-gate.html').Path).AbsoluteUri
+          Start-Process $edge -ArgumentList @("--user-data-dir=$env:RUNNER_TEMP\edge-steam", '--no-first-run', '--no-default-browser-check', '--force-renderer-accessibility', "--app=$page")
+          Start-Sleep 10
+          $out = "$env:RUNNER_TEMP/selftest-edge-steam.txt"
+          $p = Start-Process dist/claude-auto-pass.exe -ArgumentList '--self-test-steam', 'msedge', '30', $out -Wait -PassThru
+          Start-Sleep 2
+          $titles = (Get-Process msedge -ErrorAction SilentlyContinue | Where-Object MainWindowTitle | ForEach-Object MainWindowTitle) -join ', '
+          Write-Host "== Edge steam : exit=$($p.ExitCode) titles=[$titles]"
+          if (Test-Path $out) { Get-Content $out | Select-Object -First 60 | ForEach-Object { Write-Host $_ } }
+          if (Test-Path "$out.crash.txt") { Get-Content "$out.crash.txt" | ForEach-Object { Write-Host $_ } }
+          $steam = ($p.ExitCode -eq 0 -and $titles -match 'CLICKED-VIEW')
+          Get-Process msedge -ErrorAction SilentlyContinue | Stop-Process -Force
+          if (-not $steam) { Write-Error 'Edge Steam gate self-test failed'; exit 1 }
           if (-not $forced) { Write-Error 'Edge self-test failed'; exit 1 }
           if (-not $local) { Write-Error 'Edge local-project self-test failed'; exit 1 }
       - name: Self-test tray menu (screenshots)

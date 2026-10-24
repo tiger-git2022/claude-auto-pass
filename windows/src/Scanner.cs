@@ -56,7 +56,7 @@ namespace ClaudeAutoPass
             walker = uia.ControlViewWalker;
         }
 
-        static IUIAutomation CreateAutomation()
+        internal static IUIAutomation CreateAutomation()
         {
             // CUIAutomation8 (Windows 8+) first, then the original CUIAutomation.
             foreach (string clsid in new[] { "e22ad333-b25f-460c-83d0-0581107395c9", "ff48dba4-60ef-4201-aa87-54103eef594e" })

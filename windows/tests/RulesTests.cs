@@ -58,6 +58,24 @@ static class RulesTests
         Check(!ApprovalRules.CanAct("claude", true, false), "Lock gate");
         Check(ApprovalRules.CanAct("claude", true, true), "Active unlocked Claude");
 
+        // Steam Workshop adult-content gate.
+        Check(SteamRules.IsViewLabel("查看物品") && SteamRules.IsViewLabel(" View Item ") && SteamRules.IsViewLabel("檢視物品"), "Steam view labels");
+        Check(!SteamRules.IsViewLabel("查看") && !SteamRules.IsViewLabel("查看物品详情") && !SteamRules.IsViewLabel("取消"), "Steam: other view-like text");
+        Check(SteamRules.IsCancelLabel("取消") && SteamRules.IsCancelLabel("Cancel"), "Steam cancel labels");
+        Check(SteamRules.IsGateText("点击下方的“查看”按钮即表示您确认自己已至少年满 18 周岁。"), "Steam age text (zh)");
+        Check(SteamRules.IsGateText("频繁的裸露画面或色情内容"), "Steam blocked-content reason (zh)");
+        Check(SteamRules.IsGateText("By clicking View Item you confirm you are at least 18 years old."), "Steam age text (en)");
+        Check(!SteamRules.IsGateText("添加一条留言") && !SteamRules.IsGateText("赞"), "Steam: ordinary text");
+        var gate = new List<string> { "该物品包含您要求屏蔽的内容：", "频繁的裸露画面或色情内容", "点击下方的“查看”按钮即表示您确认自己已至少年满 18 周岁。", "查看物品", "查看物品", "取消", "取消", "更新内容偏好" };
+        Check(SteamRules.IsGate(gate), "Steam gate box");
+        Check(!SteamRules.IsGate(new List<string> { "查看物品", "取消" }), "Steam: buttons without age text");
+        Check(!SteamRules.IsGate(new List<string> { "查看物品", "频繁的裸露画面或色情内容" }), "Steam: no cancel button");
+        Check(!SteamRules.IsGate(new List<string>(gate) { "查看物品" }), "Steam: box also holds another view button");
+        Check(SteamRules.IsTargetProcess("steamwebhelper") && SteamRules.IsTargetProcess("msedge") && SteamRules.IsTargetProcess("Chrome"), "Steam and browser processes");
+        Check(!SteamRules.IsTargetProcess("claude") && !SteamRules.IsTargetProcess("explorer"), "Steam: other processes");
+        Check(SteamRules.IsSteamPageTitle("Steam 创意工坊::Wallpaper - 个人 - Microsoft Edge") && SteamRules.IsSteamPageTitle("Steam Community :: Item"), "Steam page titles");
+        Check(!SteamRules.IsSteamPageTitle("GitHub - Google Chrome"), "Other page titles");
+
         Check(Versioning.IsNewer("win-v1.0.0-t3", "1.0.0-t2"), "Newer build");
         Check(!Versioning.IsNewer("win-v1.0.0-t2", "1.0.0-t2"), "Same build");
         Check(!Versioning.IsNewer("win-v1.0.0-t9", "1.0.1-t1"), "Older base");
