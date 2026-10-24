@@ -13,6 +13,12 @@ namespace ClaudeAutoPass
         public const string ReleasesUrl = "https://github.com/" + Repo + "/releases";
         public const string AssetName = "claude-auto-pass.exe";
 
+        /// <summary>
+        /// Switches for "以辅助功能模式重启 Claude": build the accessibility tree for UI Automation, and keep rendering a window
+        /// that other windows cover completely (Chromium's occlusion tracking otherwise freezes it, so new cards never show up).
+        /// </summary>
+        public const string ClaudeSwitches = "--force-renderer-accessibility --disable-features=CalculateNativeWinOcclusion";
+
         /// <summary>"1.0.0-t5" for CI builds, "1.0.0-t0" for local builds.</summary>
         public static string Version =>
             Assembly.GetExecutingAssembly().GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion ?? "0.0.0-t0";

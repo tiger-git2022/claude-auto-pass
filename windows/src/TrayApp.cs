@@ -87,7 +87,7 @@ namespace ClaudeAutoPass
                 new TrayMenu.Entry { Separator = true },
                 new TrayMenu.Entry { Text = on ? "关闭自动审批" : "开启自动审批", Bold = true, Icon = on ? SymbolRegular.Pause24 : SymbolRegular.Play24, Click = Later(() => SetEnabled(!on)) },
                 new TrayMenu.Entry { Text = "自动确认 Steam 创意工坊年龄提示", Icon = settings.SteamGate ? SymbolRegular.CheckboxChecked24 : SymbolRegular.CheckboxUnchecked24, Click = Later(() => { settings.SteamGate = !settings.SteamGate; Refresh(); }) },
-                new TrayMenu.Entry { Text = "Claude 最小化时改放到最底层", Icon = settings.RestoreMinimized ? SymbolRegular.CheckboxChecked24 : SymbolRegular.CheckboxUnchecked24, Click = Later(() => { settings.RestoreMinimized = !settings.RestoreMinimized; Refresh(); }) },
+                new TrayMenu.Entry { Text = "Claude 最小化时改放到最底层", Icon = settings.RestoreMinimized ? SymbolRegular.CheckboxChecked24 : SymbolRegular.CheckboxUnchecked24, Click = Later(() => { settings.RestoreMinimized = !settings.RestoreMinimized; Refresh(); if (settings.RestoreMinimized) RestartClaude(); }) },
                 new TrayMenu.Entry { Text = "开机自动启动", Icon = autostart ? SymbolRegular.CheckboxChecked24 : SymbolRegular.CheckboxUnchecked24, Click = Later(ToggleAutostart) },
                 new TrayMenu.Entry { Separator = true },
                 new TrayMenu.Entry { Text = "导出按钮文字（诊断）…", Icon = SymbolRegular.DocumentSearch24, Click = Later(Diagnose) },
@@ -257,14 +257,16 @@ namespace ClaudeAutoPass
                 MessageBox.Show("没有找到正在运行的 Claude Desktop。请先打开 Claude。", "Claude 自动审批", MessageBoxButtons.OK, MessageBoxIcon.Information);
                 return;
             }
-            if (MessageBox.Show("将关闭 Claude Desktop，并加上 --force-renderer-accessibility 重新打开，让本工具能读到按钮。\n\n" +
-                    "在「诊断」显示元素很少，或 Claude 最小化后不自动审批时需要。未发送的输入可能丢失。继续吗？",
+            if (MessageBox.Show("将关闭 Claude Desktop，并加上 " + AppInfo.ClaudeSwitches + " 重新打开：让本工具能读到按钮，" +
+                    "并让 Claude 被其他窗口完全挡住时也继续更新（否则挡住后新弹的卡片读不到）。\n\n" +
+                    "在「诊断」显示元素很少、Claude 被挡住或最小化后不自动审批，或刚打开「Claude 最小化时改放到最底层」时需要；" +
+                    "之后正常方式重新打开 Claude 就会失效。未发送的输入可能丢失。继续吗？",
                     "以辅助功能模式重启 Claude", MessageBoxButtons.OKCancel, MessageBoxIcon.Question) != DialogResult.OK) return;
             foreach (Process p in processes)
             {
                 try { p.Kill(); p.WaitForExit(5000); } catch (Exception) { }
             }
-            try { Process.Start(new ProcessStartInfo(exe, "--force-renderer-accessibility") { UseShellExecute = false }); }
+            try { Process.Start(new ProcessStartInfo(exe, AppInfo.ClaudeSwitches) { UseShellExecute = false }); }
             catch (Exception ex) { MessageBox.Show("无法重新打开 Claude：" + ex.Message + "\n" + exe, "Claude 自动审批", MessageBoxButtons.OK, MessageBoxIcon.Warning); }
         }
 

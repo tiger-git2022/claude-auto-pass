@@ -119,15 +119,17 @@ jobs:
           # whatever the switches; off-screen behaves the same), but a window merely covered by others stays current.
           $late = Run-Edge 'late-minimized' @('--force-renderer-accessibility') 'prompt-late.html' 0 'CLICKED-SESSION' 'minimize'
           Write-Host "Prompt after minimizing (expected to fail): $late"
-          # Required: fully covered by another window (a borderless topmost form over the whole screen).
-          $lateCover = Run-Edge 'late-cover' @('--force-renderer-accessibility') 'prompt-late.html' 0 'CLICKED-SESSION' 'cover'
-          # Informational: same, with Chromium's native occlusion tracking off.
-          $lateNoOcc = Run-Edge 'late-cover-noocc' @('--force-renderer-accessibility', '--disable-features=CalculateNativeWinOcclusion') 'prompt-late.html' 0 'CLICKED-SESSION' 'cover'
-          Write-Host "Covered, occlusion tracking off: $lateNoOcc"
+          # A window fully covered by another (a borderless topmost form over the whole screen) is frozen too by Chromium's
+          # native occlusion tracking (informational, expected to fail)...
+          $lateOcc = Run-Edge 'late-cover-occlusion' @('--force-renderer-accessibility') 'prompt-late.html' 0 'CLICKED-SESSION' 'cover'
+          Write-Host "Covered, occlusion tracking on (expected to fail): $lateOcc"
+          # ...required: with the switches "restart Claude with accessibility" uses, a covered window keeps updating.
+          $switches = @('--force-renderer-accessibility', '--disable-features=CalculateNativeWinOcclusion')
+          $lateCover = Run-Edge 'late-cover' $switches 'prompt-late.html' 0 'CLICKED-SESSION' 'cover'
           # Required: minimized, then covered, with "put minimized Claude windows at the back" on: restored behind and pressed.
-          $lateBack = Run-Edge 'late-restore' @('--force-renderer-accessibility') 'prompt-late.html' 0 'CLICKED-SESSION' 'minimize-cover' @('--restore-minimized')
+          $lateBack = Run-Edge 'late-restore' $switches 'prompt-late.html' 0 'CLICKED-SESSION' 'minimize-cover' @('--restore-minimized')
           # Required: same switch, nothing covering the window: it must stay minimized (nothing pops up on the desktop).
-          $uncovered = Run-Edge 'restore-uncovered' @('--force-renderer-accessibility') 'prompt-late.html' 1 '.' 'minimize' @('--restore-minimized')
+          $uncovered = Run-Edge 'restore-uncovered' $switches 'prompt-late.html' 1 '.' 'minimize' @('--restore-minimized')
           $stayed = $uncovered -and $script:iconicAfter
           Write-Host "Uncovered window stayed minimized: $stayed"
           Get-Process msedge -ErrorAction SilentlyContinue | Stop-Process -Force
