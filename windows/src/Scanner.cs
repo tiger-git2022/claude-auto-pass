@@ -107,12 +107,8 @@ namespace ClaudeAutoPass
             List<Native.Window> windows = TargetWindows();
             result.ClaudeWindows = windows.Count;
             Candidate best = null;
-            foreach (Native.Window window in windows)
+            foreach (IUIAutomationElement root in windows.SelectMany(Roots))
             {
-                IUIAutomationElement root;
-                try { root = uia.ElementFromHandle(window.Handle); }
-                catch (COMException) { continue; }
-                if (root == null) continue;
                 List<Candidate> found = Buttons(root);
                 result.Buttons += found.Count;
                 foreach (Candidate c in found)
@@ -137,6 +133,24 @@ namespace ClaudeAutoPass
                 else result.Notes.Add($"未点：按下失败 / press failed \"{best.Label}\" {how}");
             }
             return result;
+        }
+
+        /// <summary>
+        /// UI Automation roots for a window: the window itself, plus its hidden web-content windows when it is minimized or
+        /// hidden, because their content is then missing from the window's own tree.
+        /// </summary>
+        IEnumerable<IUIAutomationElement> Roots(Native.Window window)
+        {
+            var handles = new List<IntPtr> { window.Handle };
+            if (!window.Visible || Native.IsIconic(window.Handle))
+                handles.AddRange(Native.ContentWindows(window.Handle));
+            foreach (IntPtr handle in handles)
+            {
+                IUIAutomationElement root = null;
+                try { root = uia.ElementFromHandle(handle); }
+                catch (COMException) { }
+                if (root != null) yield return root;
+            }
         }
 
         List<Candidate> Buttons(IUIAutomationElement scope)
@@ -239,10 +253,16 @@ namespace ClaudeAutoPass
             foreach (Native.Window w in scanned)
             {
                 sb.AppendLine();
-                sb.AppendLine($"== 窗口 / Window 0x{w.Handle.ToInt64():X} \"{w.Title}\" class={w.ClassName} visible={w.Visible}");
-                IUIAutomationElement root;
-                try { root = uia.ElementFromHandle(w.Handle); }
-                catch (COMException ex) { sb.AppendLine("  无法读取 / cannot read: " + ex.Message); continue; }
+                bool minimized = Native.IsIconic(w.Handle);
+                sb.AppendLine($"== 窗口 / Window 0x{w.Handle.ToInt64():X} \"{w.Title}\" class={w.ClassName} visible={w.Visible} minimized={minimized}");
+                foreach (IntPtr content in Native.ContentWindows(w.Handle))
+                    sb.AppendLine($"  网页层 / content window 0x{content.ToInt64():X} visible={Native.IsWindowVisible(content)}");
+                List<IUIAutomationElement> roots = Roots(w).ToList();
+                if (roots.Count == 0) { sb.AppendLine("  无法读取 / cannot read"); continue; }
+                for (int r = 0; r < roots.Count; r++)
+                {
+                IUIAutomationElement root = roots[r];
+                if (r > 0) sb.AppendLine("  -- 隐藏的网页层 / hidden content window");
                 int total = 0;
                 try { total = root.FindAll(TreeScope.TreeScope_Descendants, uia.CreateTrueCondition())?.Length ?? 0; }
                 catch (COMException) { }
@@ -255,6 +275,7 @@ namespace ClaudeAutoPass
                     string group = ApprovalRules.Rank(c.Kind) > 0 ? (InApprovalGroup(c.Element, root) ? " [审批组 / group]" : " [单独 / isolated]") : "";
                     sb.AppendLine($"  - \"{c.Label}\" → {c.Kind}{group}{(CachedEnabled(c.Element) ? "" : " (disabled)")}");
                     if (ApprovalRules.Rank(c.Kind) > 0 || c.Kind == Kind.Deny) sb.AppendLine("      上层按钮数:审批类 / parents: " + AncestorSummary(c.Element, root));
+                }
                 }
             }
             return sb.ToString();
