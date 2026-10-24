@@ -25,7 +25,8 @@ namespace ClaudeAutoPass
         readonly TrayMenu menu = new TrayMenu();
         string updateProgress;   // non-null while an update downloads
         readonly SynchronizationContext ui;
-        readonly Thread worker;
+        readonly Thread worker, steamWorker;
+        const int SteamIntervalMs = 300;
         volatile bool running = true, locked;
         volatile int claudeWindows = -1;
         string scanError;
@@ -54,6 +55,9 @@ namespace ClaudeAutoPass
             worker = new Thread(ScanLoop) { IsBackground = true, Name = "scan" };
             worker.SetApartmentState(ApartmentState.MTA);
             worker.Start();
+            steamWorker = new Thread(SteamLoop) { IsBackground = true, Name = "steam" };
+            steamWorker.SetApartmentState(ApartmentState.MTA);
+            steamWorker.Start();
 
             if (firstRun || Environment.GetCommandLineArgs().Contains("--updated"))
                 tray.ShowBalloonTip(5000, "Claude 自动审批 " + AppInfo.Version,
@@ -87,7 +91,6 @@ namespace ClaudeAutoPass
                 new TrayMenu.Entry { Separator = true },
                 new TrayMenu.Entry { Text = on ? "关闭自动审批" : "开启自动审批", Bold = true, Icon = on ? SymbolRegular.Pause24 : SymbolRegular.Play24, Click = Later(() => SetEnabled(!on)) },
                 new TrayMenu.Entry { Text = "自动确认 Steam 创意工坊年龄提示", Icon = settings.SteamGate ? SymbolRegular.CheckboxChecked24 : SymbolRegular.CheckboxUnchecked24, Click = Later(() => { settings.SteamGate = !settings.SteamGate; Refresh(); }) },
-                new TrayMenu.Entry { Text = "Claude 最小化时改放到最底层", Icon = settings.RestoreMinimized ? SymbolRegular.CheckboxChecked24 : SymbolRegular.CheckboxUnchecked24, Click = Later(() => { settings.RestoreMinimized = !settings.RestoreMinimized; Refresh(); if (settings.RestoreMinimized) RestartClaude(); }) },
                 new TrayMenu.Entry { Text = "开机自动启动", Icon = autostart ? SymbolRegular.CheckboxChecked24 : SymbolRegular.CheckboxUnchecked24, Click = Later(ToggleAutostart) },
                 new TrayMenu.Entry { Separator = true },
                 new TrayMenu.Entry { Text = "导出按钮文字（诊断）…", Icon = SymbolRegular.DocumentSearch24, Click = Later(Diagnose) },
@@ -114,9 +117,6 @@ namespace ClaudeAutoPass
         {
             ScanLog.Write("启动 / started " + AppInfo.Version, false);
             Scanner scanner = null;
-            SteamGateScanner steam = null;
-            var parker = new BackParker();
-            int tick = 0;
             while (running)
             {
                 int wait = ScanIntervalMs;
@@ -125,8 +125,6 @@ namespace ClaudeAutoPass
                     if (settings.Enabled && !locked)
                     {
                         scanner = scanner ?? new Scanner();
-                        if (settings.RestoreMinimized)
-                            foreach (string note in parker.Tick(scanner.TargetWindows())) ScanLog.Write(note, false);
                         var watch = Stopwatch.StartNew();
                         ScanResult result = scanner.ScanOnce();
                         watch.Stop();
@@ -143,38 +141,15 @@ namespace ClaudeAutoPass
                                 blindHintShown = true;
                                 string title = Shorten(result.Blind, 30);
                                 ui.Post(_ => { blindBalloon = true; tray.ShowBalloonTip(15000, "Claude 最小化后读不到审批卡片",
-                                    $"「{title}」最小化时 Claude 没有提供页面内容，卡片不会被自动点。点这里以辅助功能模式重启 Claude；另外 Claude 最小化后不会更新新卡片，可在右键菜单打开「Claude 最小化时改放到最底层」。", ToolTipIcon.Warning); }, null);
+                                    $"「{title}」最小化时 Claude 没有提供页面内容，卡片不会被自动点。点这里以辅助功能模式重启 Claude；另外 Claude 最小化后不会更新新弹出的卡片，最好让它留在后台、别最小化。", ToolTipIcon.Warning); }, null);
                             }
                         }
                         if (result.Clicked != Kind.None)
                         {
                             ScanLog.Write($"已点 / pressed \"{result.Label}\" ({watch.Elapsed.TotalSeconds:F1}s)", false);
-                            settings.LastAction = ApprovalRules.Describe(result.Clicked) + " · " + Autostart.Stamp() + " · " + result.Label;
+                            lock (settings) settings.LastAction = ApprovalRules.Describe(result.Clicked) + " · " + Autostart.Stamp() + " · " + result.Label;
                             wait = CooldownMs;
                             ui.Post(_ => Refresh(), null);
-                        }
-                        // Steam's gate needs no hurry; every other tick keeps the Steam client's UI tree from being walked constantly.
-                        if (settings.SteamGate && tick++ % 2 == 0)
-                        {
-                            try
-                            {
-                                steam = steam ?? new SteamGateScanner();
-                                var notes = new List<string>();
-                                string label = steam.ScanOnce(notes);
-                                foreach (string note in notes) ScanLog.Write(note);
-                                if (label != null)
-                                {
-                                    ScanLog.Write($"Steam 已点 / pressed \"{label}\"", false);
-                                    settings.LastAction = "已确认 Steam 创意工坊 · " + Autostart.Stamp() + " · " + label;
-                                    wait = CooldownMs;
-                                    ui.Post(_ => Refresh(), null);
-                                }
-                            }
-                            catch (Exception ex)
-                            {
-                                ScanLog.Write("Steam 扫描出错 / Steam scan error: " + ex.GetType().Name + " " + ex.Message);
-                                steam = null;
-                            }
                         }
                     }
                 }
@@ -184,6 +159,42 @@ namespace ClaudeAutoPass
                     scanError = ex.GetType().Name;
                     ScanLog.Write("扫描出错 / scan error: " + ex.GetType().Name + " " + ex.Message);
                     scanner = null;
+                    wait = 3000;
+                }
+                Thread.Sleep(wait);
+            }
+        }
+
+        /// <summary>Steam Workshop's gate, on its own thread so it is pressed quickly whatever Claude's scan is doing.</summary>
+        void SteamLoop()
+        {
+            SteamGateScanner steam = null;
+            while (running)
+            {
+                int wait = SteamIntervalMs;
+                try
+                {
+                    if (settings.Enabled && settings.SteamGate && !locked)
+                    {
+                        steam = steam ?? new SteamGateScanner();
+                        var notes = new List<string>();
+                        var watch = Stopwatch.StartNew();
+                        string label = steam.ScanOnce(notes);
+                        foreach (string note in notes) ScanLog.Write(note);
+                        if (label != null)
+                        {
+                            ScanLog.Write($"Steam 已点 / pressed \"{label}\" ({watch.Elapsed.TotalSeconds:F1}s)", false);
+                            lock (settings) settings.LastAction = "已确认 Steam 创意工坊 · " + Autostart.Stamp() + " · " + label;
+                            wait = CooldownMs;
+                            ui.Post(_ => Refresh(), null);
+                        }
+                    }
+                    else wait = 1000;
+                }
+                catch (Exception ex)
+                {
+                    ScanLog.Write("Steam 扫描出错 / Steam scan error: " + ex.GetType().Name + " " + ex.Message);
+                    steam = null;
                     wait = 3000;
                 }
                 Thread.Sleep(wait);
@@ -259,7 +270,7 @@ namespace ClaudeAutoPass
             }
             if (MessageBox.Show("将关闭 Claude Desktop，并加上 " + AppInfo.ClaudeSwitches + " 重新打开：让本工具能读到按钮，" +
                     "并让 Claude 被其他窗口完全挡住时也继续更新（否则挡住后新弹的卡片读不到）。\n\n" +
-                    "在「诊断」显示元素很少、Claude 被挡住或最小化后不自动审批，或刚打开「Claude 最小化时改放到最底层」时需要；" +
+                    "在「诊断」显示元素很少，或 Claude 被挡住、最小化后不自动审批时需要；" +
                     "之后正常方式重新打开 Claude 就会失效。未发送的输入可能丢失。继续吗？",
                     "以辅助功能模式重启 Claude", MessageBoxButtons.OKCancel, MessageBoxIcon.Question) != DialogResult.OK) return;
             foreach (Process p in processes)

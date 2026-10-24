@@ -1,5 +1,19 @@
 # Windows 版更新记录 / Windows Changelog
 
+## 1.2.1
+
+### 中文
+
+- 去掉「Claude 最小化时改放到最底层」：实际使用中 Claude 被还原时会自己跳到最前面，没法用。设置里留下的开关不再起作用。
+- Steam 创意工坊年龄提示改为单独扫描，每 0.3 秒一次，不再跟 Claude 的扫描排队，出现后基本马上就点。
+- 「导出按钮文字（诊断）」新增 Claude 实际的启动参数：能看出遮挡检测是否真的关掉了（Claude 自己的设置可能覆盖 `--disable-features`），没关掉时 Claude 被完全挡住后不会更新卡片。
+
+### English
+
+- Removes “Put minimized Claude windows at the back”: in real use Claude brings itself to the front when restored, so it was unusable. A saved setting no longer has any effect.
+- The Steam Workshop age gate is scanned on its own every 0.3 s instead of queuing behind Claude's scan, so it is pressed almost as soon as it appears.
+- “Export button labels (diagnostics)” now shows the switches Claude really runs with, so you can tell whether occlusion tracking is off (Claude's own settings can replace `--disable-features`); while it is on, a fully covered Claude stops updating its cards.
+
 ## 1.2.0
 
 ### 中文

@@ -252,6 +252,7 @@ namespace ClaudeAutoPass
             List<Native.Window> all = ids.Count == 0 ? new List<Native.Window>() : Native.TopLevelWindows(ids);
             List<Native.Window> scanned = TargetWindows();
             sb.AppendLine("窗口 / windows: " + all.Count + "，扫描 / scanned: " + scanned.Count);
+            if (ids.Count > 0) sb.Append(ProcessArgs.Describe(ids));
             foreach (Native.Window w in scanned)
             {
                 sb.AppendLine();

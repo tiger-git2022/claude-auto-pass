@@ -14,7 +14,7 @@
     <GenerateDocumentationFile>false</GenerateDocumentationFile>
     <DebugType>embedded</DebugType>
     <!-- Bump BaseVersion together with windows/CHANGELOG.md; CI passes BuildNumber (the N in win-vX.Y.Z-tN). -->
-    <BaseVersion>1.2.0</BaseVersion>
+    <BaseVersion>1.2.1</BaseVersion>
     <BuildNumber Condition="'$(BuildNumber)' == ''">0</BuildNumber>
     <Version>$(BaseVersion).$(BuildNumber)</Version>
     <FileVersion>$(BaseVersion).$(BuildNumber)</FileVersion>
@@ -33,6 +33,7 @@
     <Reference Include="System.Drawing" />
     <Reference Include="System.Web.Extensions" />
     <Reference Include="System.Net.Http" />
+    <Reference Include="System.Management" />
     <!-- WPF hosts the tray menu (WPF-UI style, same as EHUploader); no XAML, so plain references are enough. -->
     <Reference Include="PresentationCore" />
     <Reference Include="PresentationFramework" />
