@@ -77,7 +77,13 @@ namespace ClaudeAutoPass
                 while (watch.Elapsed.TotalSeconds < seconds)
                 {
                     if (restoreMinimized)
-                        foreach (string note in parker.Tick(scanner.TargetWindows())) notes.Add($"{watch.Elapsed.TotalSeconds:F1}s {note}");
+                    {
+                        var windows = scanner.TargetWindows();
+                        foreach (Native.Window w in windows)
+                            if (w.Visible && !BackParker.IsCovered(w.Handle, out string why) && notes.Count < 20)
+                                notes.Add($"{watch.Elapsed.TotalSeconds:F1}s 未被挡住 / not covered \"{w.Title}\" iconic={Native.IsIconic(w.Handle)} {why}");
+                        foreach (string note in parker.Tick(windows)) notes.Add($"{watch.Elapsed.TotalSeconds:F1}s {note}");
+                    }
                     result = scanner.ScanOnce();
                     if (result.Clicked != Kind.None) break;
                     Thread.Sleep(500);

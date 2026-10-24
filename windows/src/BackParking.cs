@@ -62,19 +62,23 @@ namespace ClaudeAutoPass
 
         static readonly HashSet<string> ShellClasses = new HashSet<string>(StringComparer.Ordinal)
         {
-            "Progman", "WorkerW", "Shell_TrayWnd", "Shell_SecondaryTrayWnd",
+            "Progman", "WorkerW",
         };
 
         /// <summary>
         /// True when other windows hide the whole window (for a minimized one, the place it would be restored to). Only windows
-        /// above it count; desktop, taskbar, tool, click-through and cloaked windows don't.
+        /// above it count (the taskbar does); the desktop, tool, click-through and cloaked windows don't. Parts outside every
+        /// screen count as hidden.
         /// </summary>
-        public static bool IsCovered(IntPtr target)
+        public static bool IsCovered(IntPtr target) => IsCovered(target, out _);
+
+        public static bool IsCovered(IntPtr target, out string why)
         {
+            why = null;
             bool iconic = Native.IsIconic(target);
-            if (!TargetRect(target, iconic, out RECT area)) return false;
+            if (!TargetRect(target, iconic, out RECT area)) { why = "no rect"; return false; }
             area = new RECT { Left = area.Left + Inset, Top = area.Top + Inset, Right = area.Right - Inset, Bottom = area.Bottom - Inset };
-            if (area.Right <= area.Left || area.Bottom <= area.Top) return false;
+            if (area.Right <= area.Left || area.Bottom <= area.Top) { why = "empty rect"; return false; }
             GetWindowThreadProcessId(target, out uint owner);
 
             var covers = new List<RECT>();
@@ -85,11 +89,13 @@ namespace ClaudeAutoPass
                 GetWindowThreadProcessId(hwnd, out uint pid);
                 if (pid == owner) return true;
                 int ex = GetWindowLong(hwnd, ExStyleIndex);
-                if ((ex & (TransparentStyle | ToolWindowStyle)) != 0) return true;
-                if (DwmGetWindowAttribute(hwnd, Cloaked, out int cloaked, 4) == 0 && cloaked != 0) return true;
                 var cls = new StringBuilder(64);
                 GetClassName(hwnd, cls, cls.Capacity);
-                if (ShellClasses.Contains(cls.ToString())) return true;
+                string name = cls.ToString();
+                if (ShellClasses.Contains(name)) return true;
+                bool taskbar = name == "Shell_TrayWnd" || name == "Shell_SecondaryTrayWnd";
+                if (!taskbar && (ex & (TransparentStyle | ToolWindowStyle)) != 0) return true;
+                if (DwmGetWindowAttribute(hwnd, Cloaked, out int cloaked, 4) == 0 && cloaked != 0) return true;
                 if (Bounds(hwnd, out RECT r) && r.Right > r.Left && r.Bottom > r.Top) covers.Add(r);
                 return true;
             }, IntPtr.Zero);
@@ -99,7 +105,12 @@ namespace ClaudeAutoPass
                 {
                     int x = area.Left + (area.Right - area.Left) * i / Grid;
                     int y = area.Top + (area.Bottom - area.Top) * j / Grid;
-                    if (!covers.Exists(r => x >= r.Left && x < r.Right && y >= r.Top && y < r.Bottom)) return false;
+                    if (MonitorFromPoint(new POINT { X = x, Y = y }, 0 /* MONITOR_DEFAULTTONULL */) == IntPtr.Zero) continue;
+                    if (!covers.Exists(r => x >= r.Left && x < r.Right && y >= r.Top && y < r.Bottom))
+                    {
+                        why = $"visible at {x},{y} of ({area.Left},{area.Top})-({area.Right},{area.Bottom}), {covers.Count} windows above";
+                        return false;
+                    }
                 }
             return true;
         }
@@ -157,6 +168,7 @@ namespace ClaudeAutoPass
         [DllImport("user32.dll")] static extern int GetWindowLong(IntPtr hwnd, int index);
         [DllImport("user32.dll")] static extern bool GetWindowRect(IntPtr hwnd, out RECT rect);
         [DllImport("user32.dll")] static extern bool GetWindowPlacement(IntPtr hwnd, ref WINDOWPLACEMENT placement);
+        [DllImport("user32.dll")] static extern IntPtr MonitorFromPoint(POINT point, uint flags);
         [DllImport("user32.dll")] static extern IntPtr MonitorFromRect(ref RECT rect, uint flags);
         [DllImport("user32.dll")] static extern bool GetMonitorInfo(IntPtr monitor, ref MONITORINFO info);
         [DllImport("user32.dll", CharSet = CharSet.Unicode)] static extern int GetClassName(IntPtr hwnd, StringBuilder name, int max);
