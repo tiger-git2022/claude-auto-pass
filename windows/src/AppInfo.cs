@@ -13,6 +13,12 @@ namespace ClaudeAutoPass
         public const string ReleasesUrl = "https://github.com/" + Repo + "/releases";
         public const string AssetName = "claude-auto-pass.exe";
 
+        /// <summary>
+        /// Switches for "以辅助功能模式重启 Claude": build the accessibility tree for UI Automation, and keep rendering a window
+        /// that other windows cover completely (Chromium's occlusion tracking otherwise freezes it, so new cards never show up).
+        /// </summary>
+        public const string ClaudeSwitches = "--force-renderer-accessibility --disable-features=CalculateNativeWinOcclusion";
+
         /// <summary>"1.0.0-t5" for CI builds, "1.0.0-t0" for local builds.</summary>
         public static string Version =>
             Assembly.GetExecutingAssembly().GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion ?? "0.0.0-t0";
@@ -55,6 +61,20 @@ namespace ClaudeAutoPass
         {
             get => Get("enabled") == "1";
             set => Set("enabled", value ? "1" : "0");
+        }
+
+        /// <summary>Also confirm Steam Workshop's adult-content gate (on unless switched off in the tray menu).</summary>
+        public bool SteamGate
+        {
+            get => Get("steam_gate") != "0";
+            set => Set("steam_gate", value ? "1" : "0");
+        }
+
+        /// <summary>Put minimized Claude windows behind all others instead, so their approval cards stay readable (off by default).</summary>
+        public bool RestoreMinimized
+        {
+            get => Get("restore_minimized") == "1";
+            set => Set("restore_minimized", value ? "1" : "0");
         }
 
         public string LastAction

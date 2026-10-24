@@ -14,6 +14,8 @@ namespace ClaudeAutoPass
         public string Label;
         public int ClaudeWindows;
         public int Buttons;
+        /// <summary>Title of a minimized Claude window whose page can't be read (null when none).</summary>
+        public string Blind;
         /// <summary>Why approval-like buttons were not pressed this scan (written to scan-log.txt).</summary>
         public readonly List<string> Notes = new List<string>();
     }
@@ -56,7 +58,7 @@ namespace ClaudeAutoPass
             walker = uia.ControlViewWalker;
         }
 
-        static IUIAutomation CreateAutomation()
+        internal static IUIAutomation CreateAutomation()
         {
             // CUIAutomation8 (Windows 8+) first, then the original CUIAutomation.
             foreach (string clsid in new[] { "e22ad333-b25f-460c-83d0-0581107395c9", "ff48dba4-60ef-4201-aa87-54103eef594e" })
@@ -109,11 +111,11 @@ namespace ClaudeAutoPass
             Candidate best = null;
             foreach (Native.Window window in windows)
             {
-                IUIAutomationElement root;
-                try { root = uia.ElementFromHandle(window.Handle); }
-                catch (COMException) { continue; }
-                if (root == null) continue;
+                int windowButtons = 0;
+                foreach (IUIAutomationElement root in Roots(window))
+                {
                 List<Candidate> found = Buttons(root);
+                windowButtons += found.Count;
                 result.Buttons += found.Count;
                 foreach (Candidate c in found)
                 {
@@ -124,6 +126,11 @@ namespace ClaudeAutoPass
                     if (InApprovalGroup(c.Element, root)) best = c;
                     else result.Notes.Add($"未点：不像审批卡片 / not a prompt \"{c.Label}\" {AncestorSummary(c.Element, root)}");
                 }
+                if (best != null && best.Kind == Kind.Session) break;
+                }
+                // Only the title bar's own buttons: Chromium builds no page tree for a window minimized before any UI Automation
+                // client asked for it, unless started with --force-renderer-accessibility (reproduced with Edge in CI).
+                if (windowButtons <= 3 && Native.IsIconic(window.Handle)) result.Blind = window.Title;
                 if (best != null && best.Kind == Kind.Session) break;
             }
             if (best != null && act)
@@ -137,6 +144,15 @@ namespace ClaudeAutoPass
                 else result.Notes.Add($"未点：按下失败 / press failed \"{best.Label}\" {how}");
             }
             return result;
+        }
+
+        /// <summary>The window's UI Automation element, or nothing when it can't be read.</summary>
+        IEnumerable<IUIAutomationElement> Roots(Native.Window window)
+        {
+            IUIAutomationElement root = null;
+            try { root = uia.ElementFromHandle(window.Handle); }
+            catch (COMException) { }
+            if (root != null) yield return root;
         }
 
         List<Candidate> Buttons(IUIAutomationElement scope)
@@ -239,22 +255,28 @@ namespace ClaudeAutoPass
             foreach (Native.Window w in scanned)
             {
                 sb.AppendLine();
-                sb.AppendLine($"== 窗口 / Window 0x{w.Handle.ToInt64():X} \"{w.Title}\" class={w.ClassName} visible={w.Visible}");
-                IUIAutomationElement root;
-                try { root = uia.ElementFromHandle(w.Handle); }
-                catch (COMException ex) { sb.AppendLine("  无法读取 / cannot read: " + ex.Message); continue; }
+                bool minimized = Native.IsIconic(w.Handle);
+                sb.AppendLine($"== 窗口 / Window 0x{w.Handle.ToInt64():X} \"{w.Title}\" class={w.ClassName} visible={w.Visible} minimized={minimized}");
+                List<IUIAutomationElement> roots = Roots(w).ToList();
+                if (roots.Count == 0) { sb.AppendLine("  无法读取 / cannot read"); continue; }
+                for (int r = 0; r < roots.Count; r++)
+                {
+                IUIAutomationElement root = roots[r];
                 int total = 0;
                 try { total = root.FindAll(TreeScope.TreeScope_Descendants, uia.CreateTrueCondition())?.Length ?? 0; }
                 catch (COMException) { }
                 List<Candidate> found = Buttons(root);
                 sb.AppendLine($"  元素总数 / elements: {total}，按钮 / buttons: {found.Count}");
-                if (total < 30)
+                if (total < 30 && minimized)
+                    sb.AppendLine("  窗口已最小化，且 Claude 没有提供页面内容：请在托盘菜单选择「以辅助功能模式重启 Claude」，之后最小化也能自动审批。 / Minimized without page content: restart Claude with accessibility.");
+                else if (total < 30)
                     sb.AppendLine("  元素很少：Claude 可能没有开启辅助功能树。可在托盘菜单选择「以辅助功能模式重启 Claude」。 / Few elements: try 'Restart Claude with accessibility'.");
                 foreach (Candidate c in found)
                 {
                     string group = ApprovalRules.Rank(c.Kind) > 0 ? (InApprovalGroup(c.Element, root) ? " [审批组 / group]" : " [单独 / isolated]") : "";
                     sb.AppendLine($"  - \"{c.Label}\" → {c.Kind}{group}{(CachedEnabled(c.Element) ? "" : " (disabled)")}");
                     if (ApprovalRules.Rank(c.Kind) > 0 || c.Kind == Kind.Deny) sb.AppendLine("      上层按钮数:审批类 / parents: " + AncestorSummary(c.Element, root));
+                }
                 }
             }
             return sb.ToString();

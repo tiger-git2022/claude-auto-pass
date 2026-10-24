@@ -1,5 +1,27 @@
 # Windows 版更新记录 / Windows Changelog
 
+## 1.2.0
+
+### 中文
+
+- 新增：自动确认 Steam 创意工坊的成人内容提示（「该物品包含您要求屏蔽的内容 … 查看物品 / 取消」），在 Steam 客户端和浏览器（Edge、Chrome、Firefox 等）里都能用，同样不移动鼠标。
+- 只点提示框里的「查看物品」：它旁边必须紧挨着「取消」，正上方要有「年满 18 周岁 / 裸露 / 色情」这类文字，页面上别处的「查看」不会点。浏览器只在标题含 Steam 的窗口里找，最小化的窗口不扫描。
+- 右键菜单新增开关「自动确认 Steam 创意工坊年龄提示」，默认开启；关闭自动审批时也一起暂停。
+- 「导出按钮文字（诊断）」会附上 Steam 窗口和找到的「查看物品」按钮，不起作用时用它排查。
+- Claude 窗口最小化后不自动审批的原因：Claude 没用辅助功能模式启动时，窗口在被读取前就最小化，页面内容不会提供出来，只剩标题栏按钮（CI 用 Edge 复现）。现在发现这种情况会在托盘弹一次提示，点提示即可「以辅助功能模式重启 Claude」，之后最小化也能自动审批。诊断里会标出窗口是否最小化。
+- 不过即使用了辅助功能模式，Claude 最小化后页面也不再更新，最小化之后才弹出的新卡片读不到；被其他窗口完全挡住时也一样（Chromium 的遮挡检测会冻结页面，CI 用 Edge 复现）。现在「以辅助功能模式重启 Claude」会同时加上 `--disable-features=CalculateNativeWinOcclusion`，被挡住的 Claude 会继续更新、照常自动审批。
+- 新增开关「Claude 最小化时改放到最底层」（默认关闭，打开时会提示以辅助功能模式重启 Claude）：最小化的 Claude 只要被其他窗口完全挡住，程序就把它还原并压到所有窗口最底下，不抢焦点、不弹到前面，新卡片也能自动审批；没有窗口挡着时保持最小化，挡着的窗口移开或最小化后它会自动缩回去，你自己把它切到前面就不再管它。
+
+### English
+
+- New: confirms Steam Workshop's adult-content gate (“This item contains content you have asked to hide … View Item / Cancel”) automatically, in the Steam client and in browsers (Edge, Chrome, Firefox…), without moving the mouse.
+- Only “View Item” on the gate is pressed: “Cancel” must sit right beside it and the 18+ / nudity text right above, so other “View” buttons are left alone. Browser windows are only scanned while their title mentions Steam; minimized windows are skipped.
+- A new tray menu switch, “Auto-confirm Steam Workshop age gate”, is on by default and pauses together with auto-approval.
+- “Export button labels (diagnostics)” now lists Steam windows and the “View Item” buttons found, for troubleshooting.
+- Approvals stopping while a Claude window is minimized: unless Claude runs with accessibility forced on, a window minimized before anything read it exposes only its title bar (reproduced with Edge in CI). This is now detected and a tray balloon offers to restart Claude with accessibility, after which minimized windows are approved too. Diagnostics show whether a window is minimized.
+- Even with accessibility on, a minimized Claude window stops updating, so cards that appear after minimizing are never seen, and so does a window covered completely by others (Chromium’s occlusion tracking freezes it; reproduced with Edge in CI). “Restart Claude with accessibility” now also passes `--disable-features=CalculateNativeWinOcclusion`, so a covered Claude keeps updating and is approved as usual.
+- New switch “Put minimized Claude windows at the back” (off by default; turning it on offers that restart): a minimized Claude window is restored behind all other windows, without activating it, whenever other windows cover it completely, so new cards are approved too; with nothing covering it, it stays minimized, and it is minimized again once uncovered (bringing it to the front yourself ends this).
+
 ## 1.1.2
 
 ### 中文

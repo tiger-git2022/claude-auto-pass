@@ -29,6 +29,7 @@ namespace ClaudeAutoPass
         volatile bool running = true, locked;
         volatile int claudeWindows = -1;
         string scanError;
+        bool blindHintShown, blindBalloon;
 
         public TrayApp()
         {
@@ -43,6 +44,9 @@ namespace ClaudeAutoPass
             SystemEvents.UserPreferenceChanged += OnUserPreferenceChanged;
             tray.MouseClick += (s, e) => { if (e.Button == MouseButtons.Left) SetEnabled(!settings.Enabled); };
             tray.MouseUp += (s, e) => { if (e.Button == MouseButtons.Right) ShowMenu(); };
+            // Clicking the "minimized window can't be read" balloon offers the fix.
+            tray.BalloonTipClicked += (s, e) => { if (blindBalloon) { blindBalloon = false; RestartClaude(); } };
+            tray.BalloonTipClosed += (s, e) => blindBalloon = false;
             tray.Visible = true;
             Refresh();
 
@@ -82,6 +86,8 @@ namespace ClaudeAutoPass
                 new TrayMenu.Entry { Text = "上次：" + (string.IsNullOrEmpty(last) ? "暂无" : Shorten(last, 48)), Icon = SymbolRegular.History24, Enabled = false },
                 new TrayMenu.Entry { Separator = true },
                 new TrayMenu.Entry { Text = on ? "关闭自动审批" : "开启自动审批", Bold = true, Icon = on ? SymbolRegular.Pause24 : SymbolRegular.Play24, Click = Later(() => SetEnabled(!on)) },
+                new TrayMenu.Entry { Text = "自动确认 Steam 创意工坊年龄提示", Icon = settings.SteamGate ? SymbolRegular.CheckboxChecked24 : SymbolRegular.CheckboxUnchecked24, Click = Later(() => { settings.SteamGate = !settings.SteamGate; Refresh(); }) },
+                new TrayMenu.Entry { Text = "Claude 最小化时改放到最底层", Icon = settings.RestoreMinimized ? SymbolRegular.CheckboxChecked24 : SymbolRegular.CheckboxUnchecked24, Click = Later(() => { settings.RestoreMinimized = !settings.RestoreMinimized; Refresh(); if (settings.RestoreMinimized) RestartClaude(); }) },
                 new TrayMenu.Entry { Text = "开机自动启动", Icon = autostart ? SymbolRegular.CheckboxChecked24 : SymbolRegular.CheckboxUnchecked24, Click = Later(ToggleAutostart) },
                 new TrayMenu.Entry { Separator = true },
                 new TrayMenu.Entry { Text = "导出按钮文字（诊断）…", Icon = SymbolRegular.DocumentSearch24, Click = Later(Diagnose) },
@@ -108,6 +114,9 @@ namespace ClaudeAutoPass
         {
             ScanLog.Write("启动 / started " + AppInfo.Version, false);
             Scanner scanner = null;
+            SteamGateScanner steam = null;
+            var parker = new BackParker();
+            int tick = 0;
             while (running)
             {
                 int wait = ScanIntervalMs;
@@ -116,6 +125,8 @@ namespace ClaudeAutoPass
                     if (settings.Enabled && !locked)
                     {
                         scanner = scanner ?? new Scanner();
+                        if (settings.RestoreMinimized)
+                            foreach (string note in parker.Tick(scanner.TargetWindows())) ScanLog.Write(note, false);
                         var watch = Stopwatch.StartNew();
                         ScanResult result = scanner.ScanOnce();
                         watch.Stop();
@@ -124,12 +135,46 @@ namespace ClaudeAutoPass
                         scanError = null;
                         if (watch.Elapsed.TotalSeconds >= 3) ScanLog.Write($"扫描很慢 / slow scan: {watch.Elapsed.TotalSeconds:F1}s，按钮 / buttons: {result.Buttons}", false);
                         foreach (string note in result.Notes) ScanLog.Write(note);
+                        if (result.Blind != null)
+                        {
+                            ScanLog.Write($"读不到最小化窗口的内容 / minimized window has no page content \"{result.Blind}\"");
+                            if (!blindHintShown)
+                            {
+                                blindHintShown = true;
+                                string title = Shorten(result.Blind, 30);
+                                ui.Post(_ => { blindBalloon = true; tray.ShowBalloonTip(15000, "Claude 最小化后读不到审批卡片",
+                                    $"「{title}」最小化时 Claude 没有提供页面内容，卡片不会被自动点。点这里以辅助功能模式重启 Claude；另外 Claude 最小化后不会更新新卡片，可在右键菜单打开「Claude 最小化时改放到最底层」。", ToolTipIcon.Warning); }, null);
+                            }
+                        }
                         if (result.Clicked != Kind.None)
                         {
                             ScanLog.Write($"已点 / pressed \"{result.Label}\" ({watch.Elapsed.TotalSeconds:F1}s)", false);
                             settings.LastAction = ApprovalRules.Describe(result.Clicked) + " · " + Autostart.Stamp() + " · " + result.Label;
                             wait = CooldownMs;
                             ui.Post(_ => Refresh(), null);
+                        }
+                        // Steam's gate needs no hurry; every other tick keeps the Steam client's UI tree from being walked constantly.
+                        if (settings.SteamGate && tick++ % 2 == 0)
+                        {
+                            try
+                            {
+                                steam = steam ?? new SteamGateScanner();
+                                var notes = new List<string>();
+                                string label = steam.ScanOnce(notes);
+                                foreach (string note in notes) ScanLog.Write(note);
+                                if (label != null)
+                                {
+                                    ScanLog.Write($"Steam 已点 / pressed \"{label}\"", false);
+                                    settings.LastAction = "已确认 Steam 创意工坊 · " + Autostart.Stamp() + " · " + label;
+                                    wait = CooldownMs;
+                                    ui.Post(_ => Refresh(), null);
+                                }
+                            }
+                            catch (Exception ex)
+                            {
+                                ScanLog.Write("Steam 扫描出错 / Steam scan error: " + ex.GetType().Name + " " + ex.Message);
+                                steam = null;
+                            }
                         }
                     }
                 }
@@ -177,6 +222,8 @@ namespace ClaudeAutoPass
             {
                 try { report = new Scanner().Diagnose(); }
                 catch (Exception ex) { report = "诊断失败 / Diagnostics failed: " + ex; }
+                try { report += "\r\n\r\n== Steam 创意工坊年龄提示 / Steam Workshop gate（" + (settings.SteamGate ? "已开启 / on" : "已关闭 / off") + "）\r\n" + new SteamGateScanner().Diagnose(); }
+                catch (Exception ex) { report += "\r\n\r\nSteam 诊断失败 / Steam diagnostics failed: " + ex; }
             });
             thread.SetApartmentState(ApartmentState.MTA);
             thread.Start();
@@ -210,14 +257,16 @@ namespace ClaudeAutoPass
                 MessageBox.Show("没有找到正在运行的 Claude Desktop。请先打开 Claude。", "Claude 自动审批", MessageBoxButtons.OK, MessageBoxIcon.Information);
                 return;
             }
-            if (MessageBox.Show("将关闭 Claude Desktop，并加上 --force-renderer-accessibility 重新打开，让本工具能读到按钮。\n\n" +
-                    "只在「诊断」显示元素很少、自动审批不起作用时需要。未发送的输入可能丢失。继续吗？",
+            if (MessageBox.Show("将关闭 Claude Desktop，并加上 " + AppInfo.ClaudeSwitches + " 重新打开：让本工具能读到按钮，" +
+                    "并让 Claude 被其他窗口完全挡住时也继续更新（否则挡住后新弹的卡片读不到）。\n\n" +
+                    "在「诊断」显示元素很少、Claude 被挡住或最小化后不自动审批，或刚打开「Claude 最小化时改放到最底层」时需要；" +
+                    "之后正常方式重新打开 Claude 就会失效。未发送的输入可能丢失。继续吗？",
                     "以辅助功能模式重启 Claude", MessageBoxButtons.OKCancel, MessageBoxIcon.Question) != DialogResult.OK) return;
             foreach (Process p in processes)
             {
                 try { p.Kill(); p.WaitForExit(5000); } catch (Exception) { }
             }
-            try { Process.Start(new ProcessStartInfo(exe, "--force-renderer-accessibility") { UseShellExecute = false }); }
+            try { Process.Start(new ProcessStartInfo(exe, AppInfo.ClaudeSwitches) { UseShellExecute = false }); }
             catch (Exception ex) { MessageBox.Show("无法重新打开 Claude：" + ex.Message + "\n" + exe, "Claude 自动审批", MessageBoxButtons.OK, MessageBoxIcon.Warning); }
         }
 

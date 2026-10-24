@@ -67,16 +67,34 @@ jobs:
         run: |
           $edge = "${env:ProgramFiles(x86)}\Microsoft\Edge\Application\msedge.exe"
           if (-not (Test-Path $edge)) { $edge = "$env:ProgramFiles\Microsoft\Edge\Application\msedge.exe" }
-          function Run-Edge($name, $extra, $file = 'prompt.html', $code = 0, $title = 'CLICKED-SESSION') {
+          Add-Type -Namespace Win -Name User -MemberDefinition '[DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr h, int cmd); [DllImport("user32.dll")] public static extern bool IsIconic(IntPtr h); [DllImport("user32.dll")] public static extern bool SetWindowPos(IntPtr h, IntPtr after, int x, int y, int cx, int cy, uint flags);'
+          function Run-Edge($name, $extra, $file = 'prompt.html', $code = 0, $title = 'CLICKED-SESSION', $mode = 'none', $toolArgs = @()) {
             $page = [Uri]::new((Resolve-Path "windows/tests/$file").Path).AbsoluteUri
             Get-Process msedge -ErrorAction SilentlyContinue | Stop-Process -Force
             Start-Sleep 2
             $edgeArgs = @("--user-data-dir=$env:RUNNER_TEMP\edge-$name", '--no-first-run', '--no-default-browser-check', "--app=$page") + $extra
             Start-Process $edge -ArgumentList $edgeArgs
             Start-Sleep 10
+            $cover = $null
+            Get-Process msedge -ErrorAction SilentlyContinue | Where-Object { $_.MainWindowHandle -ne 0 } | ForEach-Object {
+              $h = $_.MainWindowHandle
+              # Claude Desktop minimized: checks the page is still read and pressed while the window is an icon.
+              if ($mode -like 'minimize*') { [void][Win.User]::ShowWindow($h, 6) }
+              # Moved off every screen (x/y far outside the desktop), size and z-order kept.
+              if ($mode -eq 'offscreen') { [void][Win.User]::SetWindowPos($h, [IntPtr]::Zero, 20000, 20000, 0, 0, 0x0001 -bor 0x0004 -bor 0x0010) }
+              Start-Sleep 2
+              Write-Host "$mode $($_.MainWindowTitle): iconic=$([Win.User]::IsIconic($h))"
+            }
+            # Fully covered by another (maximized, topmost) window.
+            if ($mode -like '*cover') {
+              $cover = Start-Process pwsh -PassThru -ArgumentList '-NoProfile', '-Command', 'Add-Type -AssemblyName System.Windows.Forms; $f = New-Object Windows.Forms.Form; $f.Text = "cover"; $f.TopMost = $true; $f.FormBorderStyle = "None"; $f.StartPosition = "Manual"; $f.Bounds = [Windows.Forms.Screen]::PrimaryScreen.Bounds; [Windows.Forms.Application]::Run($f)'
+              Start-Sleep 4
+            }
             $out = "$env:RUNNER_TEMP/selftest-edge-$name.txt"
-            $p = Start-Process dist/claude-auto-pass.exe -ArgumentList '--self-test-process', 'msedge', '30', $out -Wait -PassThru
+            $p = Start-Process dist/claude-auto-pass.exe -ArgumentList (@('--self-test-process', 'msedge', '30', $out) + $toolArgs) -Wait -PassThru
             Start-Sleep 2
+            $script:iconicAfter = @(Get-Process msedge -ErrorAction SilentlyContinue | Where-Object { $_.MainWindowHandle -ne 0 } | ForEach-Object { [Win.User]::IsIconic($_.MainWindowHandle) }) -contains $true
+            if ($cover) { Stop-Process -Id $cover.Id -Force -ErrorAction SilentlyContinue }
             $titles = (Get-Process msedge -ErrorAction SilentlyContinue | Where-Object MainWindowTitle | ForEach-Object MainWindowTitle) -join ', '
             Write-Host "== Edge $name : exit=$($p.ExitCode) titles=[$titles]"
             if (Test-Path $out) { Get-Content $out | Select-Object -First 60 | ForEach-Object { Write-Host $_ } }
@@ -90,9 +108,51 @@ jobs:
           $forced = Run-Edge 'forced' @('--force-renderer-accessibility')
           # Claude Desktop Code card: only Deny and "Always allow, save to local project settings" (exit code 3).
           $local = Run-Edge 'local' @('--force-renderer-accessibility') 'prompt-local.html' 3 'CLICKED-LOCAL'
+          # Same prompt with the window minimized (owner report: approvals stopped while Claude was minimized).
+          # Informational: minimized before any UI Automation client asked for the page, without the switch. Chromium then
+          # exposes only the title bar (as on the owner's PC), which is what the tray app's warning balloon detects.
+          $minimizedDefault = Run-Edge 'minimized-default' @() 'prompt.html' 0 'CLICKED-SESSION' 'minimize'
+          Write-Host "Minimized without --force-renderer-accessibility: $minimizedDefault"
+          # Required: minimized with the switch (what "restart Claude with accessibility" gives).
+          $minimized = Run-Edge 'minimized' @('--force-renderer-accessibility') 'prompt.html' 0 'CLICKED-SESSION' 'minimize'
+          # Prompts that appear while the window is minimized never reach UI Automation (Chromium stops updating the page,
+          # whatever the switches; off-screen behaves the same), but a window merely covered by others stays current.
+          $late = Run-Edge 'late-minimized' @('--force-renderer-accessibility') 'prompt-late.html' 0 'CLICKED-SESSION' 'minimize'
+          Write-Host "Prompt after minimizing (expected to fail): $late"
+          # A window fully covered by another (a borderless topmost form over the whole screen) is frozen too by Chromium's
+          # native occlusion tracking (informational, expected to fail)...
+          $lateOcc = Run-Edge 'late-cover-occlusion' @('--force-renderer-accessibility') 'prompt-late.html' 0 'CLICKED-SESSION' 'cover'
+          Write-Host "Covered, occlusion tracking on (expected to fail): $lateOcc"
+          # ...required: with the switches "restart Claude with accessibility" uses, a covered window keeps updating.
+          $switches = @('--force-renderer-accessibility', '--disable-features=CalculateNativeWinOcclusion')
+          $lateCover = Run-Edge 'late-cover' $switches 'prompt-late.html' 0 'CLICKED-SESSION' 'cover'
+          # Required: minimized, then covered, with "put minimized Claude windows at the back" on: restored behind and pressed.
+          $lateBack = Run-Edge 'late-restore' $switches 'prompt-late.html' 0 'CLICKED-SESSION' 'minimize-cover' @('--restore-minimized')
+          # Required: same switch, nothing covering the window: it must stay minimized (nothing pops up on the desktop).
+          $uncovered = Run-Edge 'restore-uncovered' $switches 'prompt-late.html' 1 '.' 'minimize' @('--restore-minimized')
+          $stayed = $uncovered -and $script:iconicAfter
+          Write-Host "Uncovered window stayed minimized: $stayed"
           Get-Process msedge -ErrorAction SilentlyContinue | Stop-Process -Force
+          # Steam Workshop adult-content gate: presses the clickable "查看物品" box, not the decoy or "取消".
+          $page = [Uri]::new((Resolve-Path 'windows/tests/steam-gate.html').Path).AbsoluteUri
+          Start-Process $edge -ArgumentList @("--user-data-dir=$env:RUNNER_TEMP\edge-steam", '--no-first-run', '--no-default-browser-check', '--force-renderer-accessibility', "--app=$page")
+          Start-Sleep 10
+          $out = "$env:RUNNER_TEMP/selftest-edge-steam.txt"
+          $p = Start-Process dist/claude-auto-pass.exe -ArgumentList '--self-test-steam', 'msedge', '30', $out -Wait -PassThru
+          Start-Sleep 2
+          $titles = (Get-Process msedge -ErrorAction SilentlyContinue | Where-Object MainWindowTitle | ForEach-Object MainWindowTitle) -join ', '
+          Write-Host "== Edge steam : exit=$($p.ExitCode) titles=[$titles]"
+          if (Test-Path $out) { Get-Content $out | Select-Object -First 60 | ForEach-Object { Write-Host $_ } }
+          if (Test-Path "$out.crash.txt") { Get-Content "$out.crash.txt" | ForEach-Object { Write-Host $_ } }
+          $steam = ($p.ExitCode -eq 0 -and $titles -match 'CLICKED-VIEW')
+          Get-Process msedge -ErrorAction SilentlyContinue | Stop-Process -Force
+          if (-not $steam) { Write-Error 'Edge Steam gate self-test failed'; exit 1 }
           if (-not $forced) { Write-Error 'Edge self-test failed'; exit 1 }
           if (-not $local) { Write-Error 'Edge local-project self-test failed'; exit 1 }
+          if (-not $minimized) { Write-Error 'Edge minimized self-test failed'; exit 1 }
+          if (-not $lateCover) { Write-Error 'Edge covered-window self-test failed'; exit 1 }
+          if (-not $lateBack) { Write-Error 'Edge restore-minimized self-test failed'; exit 1 }
+          if (-not $stayed) { Write-Error 'Uncovered minimized window was restored'; exit 1 }
       - name: Self-test tray menu (screenshots)
         if: steps.version.outputs.skip != 'true'
         run: |

@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="zh">
+<head><meta charset="utf-8"><title>Steam 创意工坊 :: auto-pass-steam-test</title></head>
+<body style="background:#1b2838;color:#c6d4df;font-family:sans-serif">
+  <!-- Mimics Steam Workshop's adult-content gate. Steam's buttons are clickable boxes, not <button>, so the test uses the same. -->
+  <p>其他内容 <span onclick="document.title='CLICKED-DECOY'" style="cursor:pointer">查看物品</span></p>
+  <div class="contentcheck_ctn" style="margin:40px auto;width:600px;text-align:center;border:1px solid #67707b;padding:24px">
+    <div>该物品包含您要求屏蔽的内容：</div>
+    <h2>频繁的裸露画面或色情内容</h2>
+    <div>点击下方的“查看”按钮即表示您确认自己已至少年满 18 周岁。</div>
+    <div style="margin-top:16px">
+      <div class="btn_blue_steamui btn_medium" style="display:inline-block;cursor:pointer;padding:6px 16px;background:#3d8fd6" onclick="document.title='CLICKED-VIEW'"><span>查看物品</span></div>
+      <div class="btn_blue_steamui btn_medium" style="display:inline-block;cursor:pointer;padding:6px 16px;background:#3d8fd6" onclick="document.title='CLICKED-CANCEL'"><span>取消</span></div>
+    </div>
+    <div style="margin-top:24px">想要更新您在 Steam 上看到的内容类型吗？<br><a href="#" onclick="document.title='CLICKED-PREFS';return false">更新内容偏好</a></div>
+  </div>
+</body>
+</html>

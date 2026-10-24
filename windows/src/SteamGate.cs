@@ -1,0 +1,242 @@
+using System;
+using System.Collections.Generic;
+using System.Diagnostics;
+using System.Linq;
+using System.Runtime.InteropServices;
+using System.Text;
+using Interop.UIAutomationClient;
+
+namespace ClaudeAutoPass
+{
+    /// <summary>
+    /// Presses "查看物品 / View Item" on Steam Workshop's adult-content gate, in the Steam client or a browser, through
+    /// UI Automation (no mouse movement). Steam draws these buttons as links or plain clickable boxes, so any element with
+    /// the exact label counts, the gate is recognised by layout ("取消" beside it, the 18+ text above), and the press falls
+    /// back from the label to its clickable parent. Must run on an MTA thread.
+    /// </summary>
+    sealed class SteamGateScanner
+    {
+        const int BoundingRectangleProperty = 30001;
+        const int NameProperty = 30005;
+        const int TextControlType = 50020;
+        const int ControlTypeProperty = 30003;
+        const int InvokePattern = 10000;
+        const int LegacyIAccessiblePattern = 10018;
+        const int MaxTexts = 5000;
+
+        readonly IUIAutomation uia;
+        readonly IUIAutomationCondition viewCondition, cancelCondition, textCondition;
+        readonly IUIAutomationCacheRequest cache;
+        readonly IUIAutomationTreeWalker walker;
+        readonly Func<string, bool> isTarget;
+        readonly Func<string, bool> titleFilter;
+
+        /// <param name="isTargetProcess">Process filter; Steam and common browsers by default, Edge in CI.</param>
+        public SteamGateScanner(Func<string, bool> isTargetProcess = null)
+        {
+            isTarget = isTargetProcess ?? SteamRules.IsTargetProcess;
+            uia = Scanner.CreateAutomation();
+            viewCondition = AnyName(SteamRules.ViewLabels);
+            cancelCondition = AnyName(SteamRules.CancelLabels);
+            cache = uia.CreateCacheRequest();
+            cache.AddProperty(NameProperty);
+            cache.AddProperty(ControlTypeProperty);
+            cache.AddProperty(BoundingRectangleProperty);
+            textCondition = uia.CreatePropertyCondition(ControlTypeProperty, TextControlType);
+            walker = uia.ControlViewWalker;
+            titleFilter = SteamRules.IsSteamPageTitle;
+        }
+
+        IUIAutomationCondition AnyName(IEnumerable<string> names)
+        {
+            IUIAutomationCondition result = null;
+            foreach (string name in names)
+            {
+                IUIAutomationCondition c = uia.CreatePropertyCondition(NameProperty, name);
+                result = result == null ? c : uia.CreateOrCondition(result, c);
+            }
+            return result;
+        }
+
+        /// <summary>Steam client windows, and browser windows whose open tab is a Steam page; minimized ones are skipped.</summary>
+        public List<Native.Window> TargetWindows()
+        {
+            var steam = new HashSet<int>();
+            var browsers = new HashSet<int>();
+            foreach (Process p in Process.GetProcesses())
+            {
+                try
+                {
+                    if (!isTarget(p.ProcessName)) continue;
+                    if (SteamRules.IsBrowserProcess(p.ProcessName)) browsers.Add(p.Id); else steam.Add(p.Id);
+                }
+                catch (InvalidOperationException) { }
+                finally { p.Dispose(); }
+            }
+            if (steam.Count == 0 && browsers.Count == 0) return new List<Native.Window>();
+            var all = new HashSet<int>(steam);
+            all.UnionWith(browsers);
+            return Native.TopLevelWindows(all)
+                .Where(w => w.Visible && !Native.IsIconic(w.Handle))
+                .Where(w => steam.Contains(w.ProcessId) || titleFilter(w.Title))
+                .ToList();
+        }
+
+        /// <summary>Scans once; returns the pressed label, or null. Notes say why a gate was seen but not pressed.</summary>
+        public string ScanOnce(List<string> notes, bool act = true)
+        {
+            foreach (Native.Window window in TargetWindows())
+            {
+                IUIAutomationElement root;
+                try { root = uia.ElementFromHandle(window.Handle); }
+                catch (COMException) { continue; }
+                if (root == null) continue;
+                List<IUIAutomationElement> views = Find(root, viewCondition);
+                if (views.Count == 0) continue;
+                List<IUIAutomationElement> cancels = Find(root, cancelCondition);
+                List<IUIAutomationElement> texts = null;
+                foreach (IUIAutomationElement view in views)
+                {
+                    string label = Cached(view);
+                    if (!SteamRules.IsViewLabel(label)) continue;
+                    texts = texts ?? (cancels.Count > 0 ? Find(root, textCondition) : new List<IUIAutomationElement>());
+                    string why = WhyNotGate(view, cancels, texts);
+                    if (why != null)
+                    {
+                        notes?.Add($"Steam 未点：不像年龄提示 / not a gate \"{label}\" {why} \"{window.Title}\"");
+                        continue;
+                    }
+                    if (!act) return label;
+                    string how = Press(view);
+                    if (how.StartsWith("ok", StringComparison.Ordinal)) return label;
+                    notes?.Add($"Steam 未点：按下失败 / press failed \"{label}\" {how}");
+                }
+            }
+            return null;
+        }
+
+        List<IUIAutomationElement> Find(IUIAutomationElement root, IUIAutomationCondition condition)
+        {
+            var list = new List<IUIAutomationElement>();
+            try
+            {
+                IUIAutomationElementArray array = root.FindAllBuildCache(TreeScope.TreeScope_Descendants, condition, cache);
+                int n = Math.Min(array?.Length ?? 0, MaxTexts);
+                for (int i = 0; i < n; i++) list.Add(array.GetElement(i));
+            }
+            catch (COMException) { }
+            return list;
+        }
+
+        /// <summary>Null when "取消" is right next to the button and the 18+ text right above them; otherwise why not.</summary>
+        static string WhyNotGate(IUIAutomationElement view, List<IUIAutomationElement> cancels, List<IUIAutomationElement> texts)
+        {
+            Box at = Rect(view);
+            if (at.IsEmpty) return "隐藏 / hidden";
+            IUIAutomationElement cancel = cancels.FirstOrDefault(c => SteamRules.IsCancelLabel(Cached(c)) && SteamRules.IsButtonPair(at, Rect(c)));
+            if (cancel == null) return $"旁边没有取消 / no cancel beside {at}";
+            Box buttons = SteamRules.Union(at, Rect(cancel));
+            if (!texts.Any(t => SteamRules.IsGateText(Cached(t)) && SteamRules.IsAbove(buttons, Rect(t))))
+                return $"上方没有年龄提示 / no age text above {buttons}";
+            return null;
+        }
+
+        static Box Rect(IUIAutomationElement e)
+        {
+            try
+            {
+                tagRECT r = e.CachedBoundingRectangle;
+                return new Box(r.left, r.top, r.right, r.bottom);
+            }
+            catch (COMException) { return default(Box); }
+        }
+
+        /// <summary>
+        /// Invokes the element; if it is only the label inside a clickable box (Steam's div buttons), tries the box above it.
+        /// "ok ..." when pressed, otherwise why not.
+        /// </summary>
+        string Press(IUIAutomationElement element)
+        {
+            var tried = new List<string>();
+            IUIAutomationElement current = element;
+            for (int level = 0; level < 3 && current != null; level++)
+            {
+                try
+                {
+                    if (current.GetCurrentPattern(InvokePattern) is IUIAutomationInvokePattern invoke)
+                    {
+                        invoke.Invoke();
+                        return "ok invoke@" + level;
+                    }
+                    if (current.GetCurrentPattern(LegacyIAccessiblePattern) is IUIAutomationLegacyIAccessiblePattern legacy
+                        && !string.IsNullOrEmpty(legacy.CurrentDefaultAction))
+                    {
+                        legacy.DoDefaultAction();
+                        return "ok legacy@" + level + " " + legacy.CurrentDefaultAction;
+                    }
+                    tried.Add("L" + level + ":none");
+                }
+                catch (COMException ex) { tried.Add("L" + level + ":0x" + ex.HResult.ToString("X8")); }
+                try { current = walker.GetParentElement(current); }
+                catch (COMException) { break; }
+            }
+            return string.Join(" ", tried);
+        }
+
+        static int Type(IUIAutomationElement e)
+        {
+            try { return e.CachedControlType; } catch (COMException) { return 0; }
+        }
+
+        static string Cached(IUIAutomationElement e)
+        {
+            try { return e.CachedName ?? ""; } catch (COMException) { return ""; }
+        }
+
+        /// <summary>Steam windows and the gate buttons seen in them, for the diagnostics export.</summary>
+        public string Diagnose()
+        {
+            var sb = new StringBuilder();
+            List<Native.Window> windows = TargetWindows();
+            sb.AppendLine("Steam / 浏览器中的 Steam 页面窗口 / windows: " + windows.Count);
+            foreach (Native.Window w in windows)
+            {
+                IUIAutomationElement root;
+                try { root = uia.ElementFromHandle(w.Handle); }
+                catch (COMException ex) { sb.AppendLine($"== 0x{w.Handle.ToInt64():X} \"{w.Title}\" 无法读取 / cannot read: {ex.Message}"); continue; }
+                int total = 0;
+                try { total = root.FindAll(TreeScope.TreeScope_Descendants, uia.CreateTrueCondition())?.Length ?? 0; }
+                catch (COMException) { }
+                sb.AppendLine($"== 0x{w.Handle.ToInt64():X} \"{w.Title}\" class={w.ClassName} 元素 / elements: {total}");
+                List<IUIAutomationElement> views = Find(root, viewCondition);
+                List<IUIAutomationElement> cancels = Find(root, cancelCondition);
+                List<IUIAutomationElement> texts = views.Count > 0 ? Find(root, textCondition) : new List<IUIAutomationElement>();
+                foreach (IUIAutomationElement e in views.Concat(cancels))
+                    sb.AppendLine($"  - \"{Cached(e)}\" type={Type(e)} {Rect(e)}"
+                        + (SteamRules.IsViewLabel(Cached(e)) ? " " + (WhyNotGate(e, cancels, texts) ?? "[年龄提示 / gate]") : ""));
+                foreach (IUIAutomationElement t in texts.Where(t => SteamRules.IsGateText(Cached(t))))
+                    sb.AppendLine($"  · 提示文字 / text \"{Cached(t)}\" {Rect(t)}");
+                foreach (IUIAutomationElement e in views)
+                {
+                    sb.AppendLine($"  上层 / parents of \"{Cached(e)}\" {Rect(e)}:");
+                    IUIAutomationElement current = e;
+                    for (int level = 0; level < 5 && current != null; level++)
+                    {
+                        string action = "";
+                        try
+                        {
+                            if ((object)current.GetCurrentPattern(InvokePattern) != null) action += " invoke";
+                            if (current.GetCurrentPattern(LegacyIAccessiblePattern) is IUIAutomationLegacyIAccessiblePattern legacy) action += " default=\"" + legacy.CurrentDefaultAction + "\"";
+                            string name = current.CurrentName ?? "";
+                            sb.AppendLine($"    {level}: type={current.CurrentControlType} name=\"{(name.Length > 40 ? name.Substring(0, 40) + "…" : name)}\"{action}");
+                            current = walker.GetParentElement(current);
+                        }
+                        catch (COMException) { break; }
+                        if (current != null && uia.CompareElements(current, root) != 0) break;
+                    }
+                }
+            }
+            return sb.ToString();
+        }
+    }
+}
