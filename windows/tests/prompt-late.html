@@ -2,7 +2,7 @@
 <html lang="en">
 <head><meta charset="utf-8"><title>auto-pass-test</title></head>
 <body>
-  <!-- The permission prompt appears 15 s after load, i.e. after CI has minimized the window (Claude asking while minimized). -->
+  <!-- The permission prompt appears 25 s after load, i.e. after CI has minimized the window (Claude asking while minimized). -->
   <h1>Claude is working…</h1>
   <div id="slot"></div>
   <script>
@@ -12,7 +12,7 @@
         '<button onclick="document.title=\'CLICKED-DENY\'">Deny</button>' +
         '<button onclick="document.title=\'CLICKED-ONCE\'">Allow once</button>' +
         '<button onclick="document.title=\'CLICKED-SESSION\'">Allow for this chat</button></div></div>';
-    }, 15000);
+    }, 25000);
   </script>
 </body>
 </html>

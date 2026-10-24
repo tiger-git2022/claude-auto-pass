@@ -87,7 +87,7 @@ jobs:
             }
             # Fully covered by another (maximized, topmost) window.
             if ($mode -like '*cover') {
-              $cover = Start-Process pwsh -PassThru -ArgumentList '-NoProfile', '-Command', 'Add-Type -AssemblyName System.Windows.Forms; $f = New-Object Windows.Forms.Form; $f.Text = "cover"; $f.TopMost = $true; $f.WindowState = "Maximized"; [Windows.Forms.Application]::Run($f)'
+              $cover = Start-Process pwsh -PassThru -ArgumentList '-NoProfile', '-Command', 'Add-Type -AssemblyName System.Windows.Forms; $f = New-Object Windows.Forms.Form; $f.Text = "cover"; $f.TopMost = $true; $f.FormBorderStyle = "None"; $f.StartPosition = "Manual"; $f.Bounds = [Windows.Forms.Screen]::PrimaryScreen.Bounds; [Windows.Forms.Application]::Run($f)'
               Start-Sleep 4
             }
             $out = "$env:RUNNER_TEMP/selftest-edge-$name.txt"
@@ -119,8 +119,11 @@ jobs:
           # whatever the switches; off-screen behaves the same), but a window merely covered by others stays current.
           $late = Run-Edge 'late-minimized' @('--force-renderer-accessibility') 'prompt-late.html' 0 'CLICKED-SESSION' 'minimize'
           Write-Host "Prompt after minimizing (expected to fail): $late"
-          # Required: covered by another window.
+          # Required: fully covered by another window (a borderless topmost form over the whole screen).
           $lateCover = Run-Edge 'late-cover' @('--force-renderer-accessibility') 'prompt-late.html' 0 'CLICKED-SESSION' 'cover'
+          # Informational: same, with Chromium's native occlusion tracking off.
+          $lateNoOcc = Run-Edge 'late-cover-noocc' @('--force-renderer-accessibility', '--disable-features=CalculateNativeWinOcclusion') 'prompt-late.html' 0 'CLICKED-SESSION' 'cover'
+          Write-Host "Covered, occlusion tracking off: $lateNoOcc"
           # Required: minimized, then covered, with "put minimized Claude windows at the back" on: restored behind and pressed.
           $lateBack = Run-Edge 'late-restore' @('--force-renderer-accessibility') 'prompt-late.html' 0 'CLICKED-SESSION' 'minimize-cover' @('--restore-minimized')
           # Required: same switch, nothing covering the window: it must stay minimized (nothing pops up on the desktop).
