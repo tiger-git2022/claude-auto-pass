@@ -67,25 +67,33 @@ jobs:
         run: |
           $edge = "${env:ProgramFiles(x86)}\Microsoft\Edge\Application\msedge.exe"
           if (-not (Test-Path $edge)) { $edge = "$env:ProgramFiles\Microsoft\Edge\Application\msedge.exe" }
-          Add-Type -Namespace Win -Name User -MemberDefinition '[DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr h, int cmd); [DllImport("user32.dll")] public static extern bool IsIconic(IntPtr h);'
-          function Run-Edge($name, $extra, $file = 'prompt.html', $code = 0, $title = 'CLICKED-SESSION', $minimize = $false) {
+          Add-Type -Namespace Win -Name User -MemberDefinition '[DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr h, int cmd); [DllImport("user32.dll")] public static extern bool IsIconic(IntPtr h); [DllImport("user32.dll")] public static extern bool SetWindowPos(IntPtr h, IntPtr after, int x, int y, int cx, int cy, uint flags);'
+          function Run-Edge($name, $extra, $file = 'prompt.html', $code = 0, $title = 'CLICKED-SESSION', $mode = 'none') {
             $page = [Uri]::new((Resolve-Path "windows/tests/$file").Path).AbsoluteUri
             Get-Process msedge -ErrorAction SilentlyContinue | Stop-Process -Force
             Start-Sleep 2
             $edgeArgs = @("--user-data-dir=$env:RUNNER_TEMP\edge-$name", '--no-first-run', '--no-default-browser-check', "--app=$page") + $extra
             Start-Process $edge -ArgumentList $edgeArgs
             Start-Sleep 10
-            if ($minimize) {
+            $cover = $null
+            Get-Process msedge -ErrorAction SilentlyContinue | Where-Object { $_.MainWindowHandle -ne 0 } | ForEach-Object {
+              $h = $_.MainWindowHandle
               # Claude Desktop minimized: checks the page is still read and pressed while the window is an icon.
-              Get-Process msedge -ErrorAction SilentlyContinue | Where-Object { $_.MainWindowHandle -ne 0 } | ForEach-Object {
-                [void][Win.User]::ShowWindow($_.MainWindowHandle, 6)
-                Start-Sleep 2
-                Write-Host "minimized $($_.MainWindowTitle): $([Win.User]::IsIconic($_.MainWindowHandle))"
-              }
+              if ($mode -eq 'minimize') { [void][Win.User]::ShowWindow($h, 6) }
+              # Moved off every screen (x/y far outside the desktop), size and z-order kept.
+              if ($mode -eq 'offscreen') { [void][Win.User]::SetWindowPos($h, [IntPtr]::Zero, 20000, 20000, 0, 0, 0x0001 -bor 0x0004 -bor 0x0010) }
+              Start-Sleep 2
+              Write-Host "$mode $($_.MainWindowTitle): iconic=$([Win.User]::IsIconic($h))"
+            }
+            # Fully covered by another (maximized, topmost) window.
+            if ($mode -eq 'cover') {
+              $cover = Start-Process pwsh -PassThru -ArgumentList '-NoProfile', '-Command', 'Add-Type -AssemblyName System.Windows.Forms; $f = New-Object Windows.Forms.Form; $f.Text = "cover"; $f.TopMost = $true; $f.WindowState = "Maximized"; [Windows.Forms.Application]::Run($f)'
+              Start-Sleep 4
             }
             $out = "$env:RUNNER_TEMP/selftest-edge-$name.txt"
             $p = Start-Process dist/claude-auto-pass.exe -ArgumentList '--self-test-process', 'msedge', '30', $out -Wait -PassThru
             Start-Sleep 2
+            if ($cover) { Stop-Process -Id $cover.Id -Force -ErrorAction SilentlyContinue }
             $titles = (Get-Process msedge -ErrorAction SilentlyContinue | Where-Object MainWindowTitle | ForEach-Object MainWindowTitle) -join ', '
             Write-Host "== Edge $name : exit=$($p.ExitCode) titles=[$titles]"
             if (Test-Path $out) { Get-Content $out | Select-Object -First 60 | ForEach-Object { Write-Host $_ } }
@@ -102,16 +110,20 @@ jobs:
           # Same prompt with the window minimized (owner report: approvals stopped while Claude was minimized).
           # Informational: minimized before any UI Automation client asked for the page, without the switch. Chromium then
           # exposes only the title bar (as on the owner's PC), which is what the tray app's warning balloon detects.
-          $minimizedDefault = Run-Edge 'minimized-default' @() 'prompt.html' 0 'CLICKED-SESSION' $true
+          $minimizedDefault = Run-Edge 'minimized-default' @() 'prompt.html' 0 'CLICKED-SESSION' 'minimize'
           Write-Host "Minimized without --force-renderer-accessibility: $minimizedDefault"
           # Required: minimized with the switch (what "restart Claude with accessibility" gives).
-          $minimized = Run-Edge 'minimized' @('--force-renderer-accessibility') 'prompt.html' 0 'CLICKED-SESSION' $true
+          $minimized = Run-Edge 'minimized' @('--force-renderer-accessibility') 'prompt.html' 0 'CLICKED-SESSION' 'minimize'
           # Informational: the prompt appears only after the window was minimized. Which switches keep the page's
           # accessibility tree updating while minimized?
-          $late = Run-Edge 'late-forced' @('--force-renderer-accessibility') 'prompt-late.html' 0 'CLICKED-SESSION' $true
-          Write-Host "Prompt after minimizing, accessibility only: $late"
-          $lateFlags = Run-Edge 'late-flags' @('--force-renderer-accessibility', '--disable-renderer-backgrounding', '--disable-background-timer-throttling', '--disable-backgrounding-occluded-windows') 'prompt-late.html' 0 'CLICKED-SESSION' $true
-          Write-Host "Prompt after minimizing, with anti-backgrounding switches: $lateFlags"
+          $late = Run-Edge 'late-forced' @('--force-renderer-accessibility') 'prompt-late.html' 0 'CLICKED-SESSION' 'minimize'
+          Write-Host "Prompt after minimizing: $late"
+          $lateCover = Run-Edge 'late-cover' @('--force-renderer-accessibility') 'prompt-late.html' 0 'CLICKED-SESSION' 'cover'
+          Write-Host "Prompt while covered by another window: $lateCover"
+          $lateCoverNoOcc = Run-Edge 'late-cover-noocc' @('--force-renderer-accessibility', '--disable-features=CalculateNativeWinOcclusion') 'prompt-late.html' 0 'CLICKED-SESSION' 'cover'
+          Write-Host "Prompt while covered, occlusion tracking off: $lateCoverNoOcc"
+          $lateOff = Run-Edge 'late-offscreen' @('--force-renderer-accessibility') 'prompt-late.html' 0 'CLICKED-SESSION' 'offscreen'
+          Write-Host "Prompt while moved off-screen: $lateOff"
           Get-Process msedge -ErrorAction SilentlyContinue | Stop-Process -Force
           # Steam Workshop adult-content gate: presses the clickable "查看物品" box, not the decoy or "取消".
           $page = [Uri]::new((Resolve-Path 'windows/tests/steam-gate.html').Path).AbsoluteUri
