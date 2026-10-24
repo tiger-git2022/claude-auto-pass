@@ -82,6 +82,7 @@ namespace ClaudeAutoPass
             GetWindowThreadProcessId(target, out uint owner);
 
             var covers = new List<RECT>();
+            var names = new List<string>();
             EnumWindows((hwnd, _) =>
             {
                 if (hwnd == target) return iconic; // windows below the target don't hide it
@@ -96,7 +97,11 @@ namespace ClaudeAutoPass
                 bool taskbar = name == "Shell_TrayWnd" || name == "Shell_SecondaryTrayWnd";
                 if (!taskbar && (ex & (TransparentStyle | ToolWindowStyle)) != 0) return true;
                 if (DwmGetWindowAttribute(hwnd, Cloaked, out int cloaked, 4) == 0 && cloaked != 0) return true;
-                if (Bounds(hwnd, out RECT r) && r.Right > r.Left && r.Bottom > r.Top) covers.Add(r);
+                if (Bounds(hwnd, out RECT r) && r.Right > r.Left && r.Bottom > r.Top)
+                {
+                    covers.Add(r);
+                    names.Add($"{name}({r.Left},{r.Top})-({r.Right},{r.Bottom})");
+                }
                 return true;
             }, IntPtr.Zero);
 
@@ -108,7 +113,7 @@ namespace ClaudeAutoPass
                     if (MonitorFromPoint(new POINT { X = x, Y = y }, 0 /* MONITOR_DEFAULTTONULL */) == IntPtr.Zero) continue;
                     if (!covers.Exists(r => x >= r.Left && x < r.Right && y >= r.Top && y < r.Bottom))
                     {
-                        why = $"visible at {x},{y} of ({area.Left},{area.Top})-({area.Right},{area.Bottom}), {covers.Count} windows above";
+                        why = $"visible at {x},{y} of ({area.Left},{area.Top})-({area.Right},{area.Bottom}), {covers.Count} windows above: {string.Join(" ", names)}";
                         return false;
                     }
                 }
