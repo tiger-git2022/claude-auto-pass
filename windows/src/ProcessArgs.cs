@@ -36,9 +36,10 @@ namespace ClaudeAutoPass
                     sb.AppendLine($"  {group.Key} ×{group.Count()}: disable-features=\"{Switch(first.Value, "disable-features")}\""
                         + (first.Value.Contains("--force-renderer-accessibility") ? " force-renderer-accessibility" : ""));
                 }
-                bool occlusionOff = lines.Any(l => Switch(l.Value, "type") == "renderer" && Switch(l.Value, "disable-features").Contains("CalculateNativeWinOcclusion"));
+                bool occlusionOff = lines.Any(l => !l.Value.Contains("--type=") && l.Value.Contains("--disable-backgrounding-occluded-windows"))
+                    || lines.Any(l => Switch(l.Value, "type") == "renderer" && Switch(l.Value, "disable-features").Contains("CalculateNativeWinOcclusion"));
                 sb.AppendLine(occlusionOff ? "  遮挡检测已关闭 / occlusion tracking off"
-                    : "  遮挡检测未关闭：Claude 被完全挡住后不会更新 / occlusion tracking on: a fully covered Claude stops updating");
+                    : "  遮挡检测未关闭：Claude 被完全挡住或藏到屏幕外后不会更新，请用「以辅助功能模式重启 Claude」重启 / occlusion tracking on: a covered or off-screen Claude stops updating");
             }
             catch (Exception ex) { sb.AppendLine("  无法读取 / cannot read: " + ex.Message); }
             return sb.ToString();

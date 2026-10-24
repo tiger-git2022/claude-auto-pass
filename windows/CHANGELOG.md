@@ -6,13 +6,17 @@
 
 - 去掉「Claude 最小化时改放到最底层」：实际使用中 Claude 被还原时会自己跳到最前面，没法用。设置里留下的开关不再起作用。
 - Steam 创意工坊年龄提示改为单独扫描，每 0.3 秒一次，不再跟 Claude 的扫描排队，出现后基本马上就点。
-- 「导出按钮文字（诊断）」新增 Claude 实际的启动参数：能看出遮挡检测是否真的关掉了（Claude 自己的设置可能覆盖 `--disable-features`），没关掉时 Claude 被完全挡住后不会更新卡片。
+- 修复 Claude 被完全挡住时仍不自动审批：Claude 自己的设置会覆盖 1.2.0 加的 `--disable-features`（CI 已复现）。「以辅助功能模式重启 Claude」现在再加上不会被覆盖的 `--disable-backgrounding-occluded-windows`，需要用它重启一次 Claude。
+- 新增右键菜单「把 Claude 藏到屏幕外（代替最小化）」：把 Claude 窗口移到屏幕外面（不抢焦点），页面照常更新、照常自动审批；在任务栏点 Claude 或 Alt+Tab 切过去就会回到原位，菜单里也可以「把 Claude 拿回来」，退出本工具时也会自动拿回。真正最小化后依然读不到新卡片。
+- 「导出按钮文字（诊断）」新增 Claude 实际的启动参数，能看出上面的参数是否生效。
 
 ### English
 
 - Removes “Put minimized Claude windows at the back”: in real use Claude brings itself to the front when restored, so it was unusable. A saved setting no longer has any effect.
 - The Steam Workshop age gate is scanned on its own every 0.3 s instead of queuing behind Claude's scan, so it is pressed almost as soon as it appears.
-- “Export button labels (diagnostics)” now shows the switches Claude really runs with, so you can tell whether occlusion tracking is off (Claude's own settings can replace `--disable-features`); while it is on, a fully covered Claude stops updating its cards.
+- Fixes a fully covered Claude still not being approved: Claude's own settings replace the `--disable-features` added in 1.2.0 (reproduced in CI). “Restart Claude with accessibility” now also passes `--disable-backgrounding-occluded-windows`, which cannot be replaced that way; restart Claude with it once.
+- New tray item “Hide Claude off-screen (instead of minimizing)”: moves Claude's windows past the edge of the screen without activating them, where the page keeps updating and cards are approved as usual. Clicking Claude in the taskbar or Alt+Tab brings it back, as does “Bring Claude back” in the menu or exiting this tool. A truly minimized Claude still can't be read.
+- “Export button labels (diagnostics)” now shows the switches Claude really runs with, to check that they took effect.
 
 ## 1.2.0
 

@@ -27,6 +27,8 @@ namespace ClaudeAutoPass
         readonly SynchronizationContext ui;
         readonly Thread worker, steamWorker;
         const int SteamIntervalMs = 300;
+        /// <summary>Hide / show request for the scan thread (it owns the scanner that finds Claude's windows): 1 hide, 2 show.</summary>
+        volatile int hideRequest;
         volatile bool running = true, locked;
         volatile int claudeWindows = -1;
         string scanError;
@@ -91,6 +93,7 @@ namespace ClaudeAutoPass
                 new TrayMenu.Entry { Separator = true },
                 new TrayMenu.Entry { Text = on ? "关闭自动审批" : "开启自动审批", Bold = true, Icon = on ? SymbolRegular.Pause24 : SymbolRegular.Play24, Click = Later(() => SetEnabled(!on)) },
                 new TrayMenu.Entry { Text = "自动确认 Steam 创意工坊年龄提示", Icon = settings.SteamGate ? SymbolRegular.CheckboxChecked24 : SymbolRegular.CheckboxUnchecked24, Click = Later(() => { settings.SteamGate = !settings.SteamGate; Refresh(); }) },
+                new TrayMenu.Entry { Text = ClaudeHider.Any ? "把 Claude 拿回来" : "把 Claude 藏到屏幕外（代替最小化）", Icon = ClaudeHider.Any ? SymbolRegular.Eye24 : SymbolRegular.EyeOff24, Click = Later(() => { hideRequest = ClaudeHider.Any ? 2 : 1; }) },
                 new TrayMenu.Entry { Text = "开机自动启动", Icon = autostart ? SymbolRegular.CheckboxChecked24 : SymbolRegular.CheckboxUnchecked24, Click = Later(ToggleAutostart) },
                 new TrayMenu.Entry { Separator = true },
                 new TrayMenu.Entry { Text = "导出按钮文字（诊断）…", Icon = SymbolRegular.DocumentSearch24, Click = Later(Diagnose) },
@@ -125,6 +128,15 @@ namespace ClaudeAutoPass
                     if (settings.Enabled && !locked)
                     {
                         scanner = scanner ?? new Scanner();
+                        int request = hideRequest;
+                        hideRequest = 0;
+                        if (request == 1)
+                        {
+                            int n = ClaudeHider.Hide(scanner.TargetWindows());
+                            ScanLog.Write($"已把 {n} 个 Claude 窗口藏到屏幕外 / hid {n} Claude windows off-screen", false);
+                        }
+                        else if (request == 2) ClaudeHider.ShowAll();
+                        foreach (string note in ClaudeHider.Tick()) ScanLog.Write(note, false);
                         var watch = Stopwatch.StartNew();
                         ScanResult result = scanner.ScanOnce();
                         watch.Stop();
@@ -141,7 +153,7 @@ namespace ClaudeAutoPass
                                 blindHintShown = true;
                                 string title = Shorten(result.Blind, 30);
                                 ui.Post(_ => { blindBalloon = true; tray.ShowBalloonTip(15000, "Claude 最小化后读不到审批卡片",
-                                    $"「{title}」最小化时 Claude 没有提供页面内容，卡片不会被自动点。点这里以辅助功能模式重启 Claude；另外 Claude 最小化后不会更新新弹出的卡片，最好让它留在后台、别最小化。", ToolTipIcon.Warning); }, null);
+                                    $"「{title}」最小化时 Claude 没有提供页面内容，卡片不会被自动点。点这里以辅助功能模式重启 Claude；另外 Claude 最小化后不会更新新弹出的卡片，可以用右键菜单「把 Claude 藏到屏幕外」代替最小化。", ToolTipIcon.Warning); }, null);
                             }
                         }
                         if (result.Clicked != Kind.None)
@@ -353,6 +365,7 @@ namespace ClaudeAutoPass
         protected override void ExitThreadCore()
         {
             running = false;
+            try { ClaudeHider.ShowAll(); } catch (Exception) { } // never leave Claude off-screen
             SystemEvents.SessionSwitch -= OnSessionSwitch;
             SystemEvents.UserPreferenceChanged -= OnUserPreferenceChanged;
             menu.Close();
