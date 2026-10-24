@@ -76,7 +76,7 @@ jobs:
             Start-Process $edge -ArgumentList $edgeArgs
             Start-Sleep 10
             if ($minimize) {
-              # Claude Desktop minimized: the page sits in a hidden child window that UI Automation leaves out by default.
+              # Claude Desktop minimized: checks the page is still read and pressed while the window is an icon.
               Get-Process msedge -ErrorAction SilentlyContinue | Where-Object { $_.MainWindowHandle -ne 0 } | ForEach-Object {
                 [void][Win.User]::ShowWindow($_.MainWindowHandle, 6)
                 Start-Sleep 2
@@ -100,6 +100,10 @@ jobs:
           # Claude Desktop Code card: only Deny and "Always allow, save to local project settings" (exit code 3).
           $local = Run-Edge 'local' @('--force-renderer-accessibility') 'prompt-local.html' 3 'CLICKED-LOCAL'
           # Same prompt with the window minimized (owner report: approvals stopped while Claude was minimized).
+          # Informational: minimized before any UI Automation client asked for the page, without the switch.
+          $minimizedDefault = Run-Edge 'minimized-default' @() 'prompt.html' 0 'CLICKED-SESSION' $true
+          Write-Host "Minimized without --force-renderer-accessibility: $minimizedDefault"
+          # Required: minimized with the switch (what "restart Claude with accessibility" gives).
           $minimized = Run-Edge 'minimized' @('--force-renderer-accessibility') 'prompt.html' 0 'CLICKED-SESSION' $true
           Get-Process msedge -ErrorAction SilentlyContinue | Stop-Process -Force
           # Steam Workshop adult-content gate: presses the clickable "查看物品" box, not the decoy or "取消".

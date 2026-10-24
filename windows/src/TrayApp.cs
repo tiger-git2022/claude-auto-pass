@@ -29,6 +29,7 @@ namespace ClaudeAutoPass
         volatile bool running = true, locked;
         volatile int claudeWindows = -1;
         string scanError;
+        bool blindHintShown;
 
         public TrayApp()
         {
@@ -127,6 +128,17 @@ namespace ClaudeAutoPass
                         scanError = null;
                         if (watch.Elapsed.TotalSeconds >= 3) ScanLog.Write($"扫描很慢 / slow scan: {watch.Elapsed.TotalSeconds:F1}s，按钮 / buttons: {result.Buttons}", false);
                         foreach (string note in result.Notes) ScanLog.Write(note);
+                        if (result.Blind != null)
+                        {
+                            ScanLog.Write($"读不到最小化窗口的内容 / minimized window has no page content \"{result.Blind}\"");
+                            if (!blindHintShown)
+                            {
+                                blindHintShown = true;
+                                string title = Shorten(result.Blind, 30);
+                                ui.Post(_ => tray.ShowBalloonTip(10000, "Claude 最小化后读不到审批卡片",
+                                    $"「{title}」最小化时 Claude 没有提供页面内容，这个窗口里的卡片不会被自动点。右键托盘图标选「以辅助功能模式重启 Claude」即可解决。", ToolTipIcon.Warning), null);
+                            }
+                        }
                         if (result.Clicked != Kind.None)
                         {
                             ScanLog.Write($"已点 / pressed \"{result.Label}\" ({watch.Elapsed.TotalSeconds:F1}s)", false);

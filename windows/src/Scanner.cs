@@ -14,6 +14,8 @@ namespace ClaudeAutoPass
         public string Label;
         public int ClaudeWindows;
         public int Buttons;
+        /// <summary>Title of a minimized Claude window whose page can't be read (null when none).</summary>
+        public string Blind;
         /// <summary>Why approval-like buttons were not pressed this scan (written to scan-log.txt).</summary>
         public readonly List<string> Notes = new List<string>();
     }
@@ -107,9 +109,13 @@ namespace ClaudeAutoPass
             List<Native.Window> windows = TargetWindows();
             result.ClaudeWindows = windows.Count;
             Candidate best = null;
-            foreach (IUIAutomationElement root in windows.SelectMany(Roots))
+            foreach (Native.Window window in windows)
             {
+                int windowButtons = 0;
+                foreach (IUIAutomationElement root in Roots(window))
+                {
                 List<Candidate> found = Buttons(root);
+                windowButtons += found.Count;
                 result.Buttons += found.Count;
                 foreach (Candidate c in found)
                 {
@@ -120,6 +126,11 @@ namespace ClaudeAutoPass
                     if (InApprovalGroup(c.Element, root)) best = c;
                     else result.Notes.Add($"未点：不像审批卡片 / not a prompt \"{c.Label}\" {AncestorSummary(c.Element, root)}");
                 }
+                if (best != null && best.Kind == Kind.Session) break;
+                }
+                // Only the title bar's own buttons: Chromium has not built this page's accessibility tree (seen on minimized
+                // Claude windows that were never shown to a UI Automation client).
+                if (windowButtons <= 3 && Native.IsIconic(window.Handle)) result.Blind = window.Title;
                 if (best != null && best.Kind == Kind.Session) break;
             }
             if (best != null && act)
@@ -136,8 +147,8 @@ namespace ClaudeAutoPass
         }
 
         /// <summary>
-        /// UI Automation roots for a window: the window itself, plus its hidden web-content windows when it is minimized or
-        /// hidden, because their content is then missing from the window's own tree.
+        /// UI Automation roots for a window: the window itself, plus its web-content child windows when it is minimized or
+        /// hidden (diagnostics show whether they add anything).
         /// </summary>
         IEnumerable<IUIAutomationElement> Roots(Native.Window window)
         {
