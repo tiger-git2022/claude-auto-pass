@@ -106,6 +106,12 @@ jobs:
           Write-Host "Minimized without --force-renderer-accessibility: $minimizedDefault"
           # Required: minimized with the switch (what "restart Claude with accessibility" gives).
           $minimized = Run-Edge 'minimized' @('--force-renderer-accessibility') 'prompt.html' 0 'CLICKED-SESSION' $true
+          # Informational: the prompt appears only after the window was minimized. Which switches keep the page's
+          # accessibility tree updating while minimized?
+          $late = Run-Edge 'late-forced' @('--force-renderer-accessibility') 'prompt-late.html' 0 'CLICKED-SESSION' $true
+          Write-Host "Prompt after minimizing, accessibility only: $late"
+          $lateFlags = Run-Edge 'late-flags' @('--force-renderer-accessibility', '--disable-renderer-backgrounding', '--disable-background-timer-throttling', '--disable-backgrounding-occluded-windows') 'prompt-late.html' 0 'CLICKED-SESSION' $true
+          Write-Host "Prompt after minimizing, with anti-backgrounding switches: $lateFlags"
           Get-Process msedge -ErrorAction SilentlyContinue | Stop-Process -Force
           # Steam Workshop adult-content gate: presses the clickable "查看物品" box, not the decoy or "取消".
           $page = [Uri]::new((Resolve-Path 'windows/tests/steam-gate.html').Path).AbsoluteUri
