@@ -87,6 +87,7 @@ namespace ClaudeAutoPass
                 new TrayMenu.Entry { Separator = true },
                 new TrayMenu.Entry { Text = on ? "关闭自动审批" : "开启自动审批", Bold = true, Icon = on ? SymbolRegular.Pause24 : SymbolRegular.Play24, Click = Later(() => SetEnabled(!on)) },
                 new TrayMenu.Entry { Text = "自动确认 Steam 创意工坊年龄提示", Icon = settings.SteamGate ? SymbolRegular.CheckboxChecked24 : SymbolRegular.CheckboxUnchecked24, Click = Later(() => { settings.SteamGate = !settings.SteamGate; Refresh(); }) },
+                new TrayMenu.Entry { Text = "Claude 最小化时改放到最底层", Icon = settings.RestoreMinimized ? SymbolRegular.CheckboxChecked24 : SymbolRegular.CheckboxUnchecked24, Click = Later(() => { settings.RestoreMinimized = !settings.RestoreMinimized; Refresh(); }) },
                 new TrayMenu.Entry { Text = "开机自动启动", Icon = autostart ? SymbolRegular.CheckboxChecked24 : SymbolRegular.CheckboxUnchecked24, Click = Later(ToggleAutostart) },
                 new TrayMenu.Entry { Separator = true },
                 new TrayMenu.Entry { Text = "导出按钮文字（诊断）…", Icon = SymbolRegular.DocumentSearch24, Click = Later(Diagnose) },
@@ -123,6 +124,9 @@ namespace ClaudeAutoPass
                     if (settings.Enabled && !locked)
                     {
                         scanner = scanner ?? new Scanner();
+                        if (settings.RestoreMinimized)
+                            foreach (Native.Window w in scanner.TargetWindows())
+                                if (w.Visible && Native.RestoreBehind(w.Handle)) ScanLog.Write($"已把最小化的窗口放到最底层 / restored behind other windows \"{w.Title}\"", false);
                         var watch = Stopwatch.StartNew();
                         ScanResult result = scanner.ScanOnce();
                         watch.Stop();
@@ -139,7 +143,7 @@ namespace ClaudeAutoPass
                                 blindHintShown = true;
                                 string title = Shorten(result.Blind, 30);
                                 ui.Post(_ => { blindBalloon = true; tray.ShowBalloonTip(15000, "Claude 最小化后读不到审批卡片",
-                                    $"「{title}」最小化时 Claude 没有提供页面内容，卡片不会被自动点。点这里以辅助功能模式重启 Claude，之后最小化也能自动审批。", ToolTipIcon.Warning); }, null);
+                                    $"「{title}」最小化时 Claude 没有提供页面内容，卡片不会被自动点。点这里以辅助功能模式重启 Claude；另外 Claude 最小化后不会更新新卡片，可在右键菜单打开「Claude 最小化时改放到最底层」。", ToolTipIcon.Warning); }, null);
                             }
                         }
                         if (result.Clicked != Kind.None)

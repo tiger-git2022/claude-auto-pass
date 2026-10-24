@@ -13,6 +13,22 @@ namespace ClaudeAutoPass
         [DllImport("user32.dll")] static extern uint GetWindowThreadProcessId(IntPtr hwnd, out uint processId);
         [DllImport("user32.dll")] public static extern bool IsWindowVisible(IntPtr hwnd);
         [DllImport("user32.dll")] public static extern bool IsIconic(IntPtr hwnd);
+        [DllImport("user32.dll")] static extern bool ShowWindow(IntPtr hwnd, int cmd);
+        [DllImport("user32.dll")] static extern bool SetWindowPos(IntPtr hwnd, IntPtr after, int x, int y, int cx, int cy, uint flags);
+
+        /// <summary>
+        /// Restores a minimized window without activating it and puts it behind every other window. Chromium stops updating
+        /// a minimized page (new approval cards never reach UI Automation) but keeps a covered one current.
+        /// </summary>
+        public static bool RestoreBehind(IntPtr hwnd)
+        {
+            if (!IsIconic(hwnd)) return false;
+            const int ShowNoActivate = 4;
+            const uint NoSize = 0x0001, NoMove = 0x0002, NoActivate = 0x0010;
+            ShowWindow(hwnd, ShowNoActivate);
+            SetWindowPos(hwnd, new IntPtr(1) /* HWND_BOTTOM */, 0, 0, 0, 0, NoSize | NoMove | NoActivate);
+            return true;
+        }
         [DllImport("user32.dll", CharSet = CharSet.Unicode)] static extern int GetClassName(IntPtr hwnd, StringBuilder name, int max);
         [DllImport("user32.dll", CharSet = CharSet.Unicode)] static extern int GetWindowText(IntPtr hwnd, StringBuilder text, int max);
 

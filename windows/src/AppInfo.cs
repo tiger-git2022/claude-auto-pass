@@ -64,6 +64,13 @@ namespace ClaudeAutoPass
             set => Set("steam_gate", value ? "1" : "0");
         }
 
+        /// <summary>Put minimized Claude windows behind all others instead, so their approval cards stay readable (off by default).</summary>
+        public bool RestoreMinimized
+        {
+            get => Get("restore_minimized") == "1";
+            set => Set("restore_minimized", value ? "1" : "0");
+        }
+
         public string LastAction
         {
             get => Get("last_action");

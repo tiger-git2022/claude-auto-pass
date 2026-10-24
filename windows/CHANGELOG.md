@@ -9,6 +9,7 @@
 - 右键菜单新增开关「自动确认 Steam 创意工坊年龄提示」，默认开启；关闭自动审批时也一起暂停。
 - 「导出按钮文字（诊断）」会附上 Steam 窗口和找到的「查看物品」按钮，不起作用时用它排查。
 - Claude 窗口最小化后不自动审批的原因：Claude 没用辅助功能模式启动时，窗口在被读取前就最小化，页面内容不会提供出来，只剩标题栏按钮（CI 用 Edge 复现）。现在发现这种情况会在托盘弹一次提示，点提示即可「以辅助功能模式重启 Claude」，之后最小化也能自动审批。诊断里会标出窗口是否最小化。
+- 不过即使用了辅助功能模式，Claude 最小化以后页面也不再更新，最小化之后才出现的新卡片读不到；被别的窗口挡住则不受影响。新增开关「Claude 最小化时改放到最底层」（默认关闭）：打开后你一点最小化，程序就把 Claude 窗口还原并压到所有窗口最底下，不抢焦点、不弹到前面，这样新卡片也能自动审批。不想用开关的话，别最小化 Claude，让它被别的窗口挡住就行。
 
 ### English
 
@@ -17,6 +18,7 @@
 - A new tray menu switch, “Auto-confirm Steam Workshop age gate”, is on by default and pauses together with auto-approval.
 - “Export button labels (diagnostics)” now lists Steam windows and the “View Item” buttons found, for troubleshooting.
 - Approvals stopping while a Claude window is minimized: unless Claude runs with accessibility forced on, a window minimized before anything read it exposes only its title bar (reproduced with Edge in CI). This is now detected and a tray balloon offers to restart Claude with accessibility, after which minimized windows are approved too. Diagnostics show whether a window is minimized.
+- Even with accessibility on, a minimized Claude window stops updating, so cards that appear after minimizing are never seen; a window merely covered by others keeps working. A new switch, “Put minimized Claude windows at the back” (off by default), restores a minimized Claude window behind all other windows without activating it, so new cards are approved too. Otherwise, leave Claude covered rather than minimized.
 
 ## 1.1.2
 
