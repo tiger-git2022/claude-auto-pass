@@ -21,7 +21,7 @@ namespace ClaudeAutoPass
             Application.ThreadException += (s, e) => WriteCrash(crashLog, e.Exception);
             if (args.Length >= 2 && args[0] == "--self-test-form") return SelfTest.Form(args[1]);
             if (args.Length >= 2 && args[0] == "--self-test-menu") return SelfTest.Menu(args[1]);
-            if (args.Length >= 4 && args[0] == "--self-test-process") return SelfTest.Process(args[1], int.Parse(args[2]), args[3], args.Length >= 5 && args[4] == "--restore-minimized");
+            if (args.Length >= 4 && args[0] == "--self-test-process") return SelfTest.Process(args[1], int.Parse(args[2]), args[3], args.Length >= 5 && args[4] == "--hide");
             if (args.Length >= 4 && args[0] == "--self-test-steam") return SelfTest.Steam(args[1], int.Parse(args[2]), args[3]);
 
             bool updated = args.Contains("--updated");
@@ -63,7 +63,7 @@ namespace ClaudeAutoPass
     static class SelfTest
     {
         /// <summary>Scans windows of another process (a Chromium browser showing a test page) until it presses a button.</summary>
-        public static int Process(string processName, int seconds, string output, bool restoreMinimized = false)
+        public static int Process(string processName, int seconds, string output, bool hide = false)
         {
             int code = 1;
             string log = "";
@@ -72,24 +72,16 @@ namespace ClaudeAutoPass
                 var scanner = new Scanner(name => string.Equals(name, processName, StringComparison.OrdinalIgnoreCase));
                 var watch = Stopwatch.StartNew();
                 ScanResult result = null;
-                var parker = new BackParker();
-                var notes = new System.Collections.Generic.List<string>();
+                // "把 Claude 藏到屏幕外": the page must keep updating off-screen.
+                int hidden = hide ? ClaudeHider.Hide(scanner.TargetWindows()) : 0;
                 while (watch.Elapsed.TotalSeconds < seconds)
                 {
-                    if (restoreMinimized)
-                    {
-                        var windows = scanner.TargetWindows();
-                        foreach (Native.Window w in windows)
-                            if (w.Visible && !BackParker.IsCovered(w.Handle, out string why) && notes.Count < 20)
-                                notes.Add($"{watch.Elapsed.TotalSeconds:F1}s 未被挡住 / not covered \"{w.Title}\" iconic={Native.IsIconic(w.Handle)} {why}");
-                        foreach (string note in parker.Tick(windows)) notes.Add($"{watch.Elapsed.TotalSeconds:F1}s {note}");
-                    }
                     result = scanner.ScanOnce();
                     if (result.Clicked != Kind.None) break;
                     Thread.Sleep(500);
                 }
                 code = result?.Clicked == Kind.Session ? 0 : result?.Clicked == Kind.Once ? 2 : result?.Clicked == Kind.LocalProject ? 3 : 1;
-                log = $"clicked={result?.Clicked} label=\"{result?.Label}\" windows={result?.ClaudeWindows} buttons={result?.Buttons} after={watch.Elapsed.TotalSeconds:F1}s\n" + string.Join("\n", notes) + "\n\n"
+                log = $"clicked={result?.Clicked} label=\"{result?.Label}\" windows={result?.ClaudeWindows} buttons={result?.Buttons} after={watch.Elapsed.TotalSeconds:F1}s hidden={hidden}\n\n"
                       + scanner.Diagnose();
             });
             File.WriteAllText(output, log);
@@ -264,7 +256,7 @@ namespace ClaudeAutoPass
                 new TrayMenu.Entry { Separator = true },
                 new TrayMenu.Entry { Text = "关闭自动审批", Bold = true, Icon = Wpf.Ui.Controls.SymbolRegular.Pause24, Click = none },
                 new TrayMenu.Entry { Text = "自动确认 Steam 创意工坊年龄提示", Icon = Wpf.Ui.Controls.SymbolRegular.CheckboxChecked24, Click = none },
-                new TrayMenu.Entry { Text = "Claude 最小化时改放到最底层", Icon = Wpf.Ui.Controls.SymbolRegular.CheckboxUnchecked24, Click = none },
+                new TrayMenu.Entry { Text = "把 Claude 藏到屏幕外（代替最小化）", Icon = Wpf.Ui.Controls.SymbolRegular.EyeOff24, Click = none },
                 new TrayMenu.Entry { Text = "开机自动启动", Icon = Wpf.Ui.Controls.SymbolRegular.CheckboxChecked24, Click = none },
                 new TrayMenu.Entry { Separator = true },
                 new TrayMenu.Entry { Text = "导出按钮文字（诊断）…", Icon = Wpf.Ui.Controls.SymbolRegular.DocumentSearch24, Click = none },

@@ -15,9 +15,11 @@ namespace ClaudeAutoPass
 
         /// <summary>
         /// Switches for "以辅助功能模式重启 Claude": build the accessibility tree for UI Automation, and keep rendering a window
-        /// that other windows cover completely (Chromium's occlusion tracking otherwise freezes it, so new cards never show up).
+        /// that other windows cover completely or that sits off-screen (Chromium otherwise freezes it, so new cards never show up).
+        /// --disable-backgrounding-occluded-windows alone does it and, unlike --disable-features, can't be replaced by the
+        /// app's own feature list (Chromium keeps only the last --disable-features); both are passed.
         /// </summary>
-        public const string ClaudeSwitches = "--force-renderer-accessibility --disable-features=CalculateNativeWinOcclusion";
+        public const string ClaudeSwitches = "--force-renderer-accessibility --disable-backgrounding-occluded-windows --disable-features=CalculateNativeWinOcclusion";
 
         /// <summary>"1.0.0-t5" for CI builds, "1.0.0-t0" for local builds.</summary>
         public static string Version =>
@@ -68,13 +70,6 @@ namespace ClaudeAutoPass
         {
             get => Get("steam_gate") != "0";
             set => Set("steam_gate", value ? "1" : "0");
-        }
-
-        /// <summary>Put minimized Claude windows behind all others instead, so their approval cards stay readable (off by default).</summary>
-        public bool RestoreMinimized
-        {
-            get => Get("restore_minimized") == "1";
-            set => Set("restore_minimized", value ? "1" : "0");
         }
 
         public string LastAction
