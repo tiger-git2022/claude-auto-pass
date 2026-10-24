@@ -10,7 +10,6 @@ namespace ClaudeAutoPass
         delegate bool EnumWindowsProc(IntPtr hwnd, IntPtr lParam);
 
         [DllImport("user32.dll")] static extern bool EnumWindows(EnumWindowsProc callback, IntPtr lParam);
-        [DllImport("user32.dll")] static extern bool EnumChildWindows(IntPtr parent, EnumWindowsProc callback, IntPtr lParam);
         [DllImport("user32.dll")] static extern uint GetWindowThreadProcessId(IntPtr hwnd, out uint processId);
         [DllImport("user32.dll")] public static extern bool IsWindowVisible(IntPtr hwnd);
         [DllImport("user32.dll")] public static extern bool IsIconic(IntPtr hwnd);
@@ -24,24 +23,6 @@ namespace ClaudeAutoPass
             public string ClassName;
             public string Title;
             public bool Visible;
-        }
-
-        /// <summary>
-        /// Chromium's web-content child windows ("Chrome_RenderWidgetHostHWND") of a top-level window. While the window is
-        /// minimized they are hidden, and UI Automation leaves hidden child windows out of the parent's tree, so the page
-        /// (and any approval card on it) can only be reached by asking for these windows directly.
-        /// </summary>
-        public static List<IntPtr> ContentWindows(IntPtr topLevel)
-        {
-            var result = new List<IntPtr>();
-            EnumChildWindows(topLevel, (hwnd, _) =>
-            {
-                var cls = new StringBuilder(256);
-                GetClassName(hwnd, cls, cls.Capacity);
-                if (cls.ToString() == "Chrome_RenderWidgetHostHWND") result.Add(hwnd);
-                return true;
-            }, IntPtr.Zero);
-            return result;
         }
 
         /// <summary>Top-level windows owned by the given processes.</summary>

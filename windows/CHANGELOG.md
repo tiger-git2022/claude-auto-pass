@@ -8,7 +8,7 @@
 - 只点提示框里的「查看物品」：它旁边必须紧挨着「取消」，正上方要有「年满 18 周岁 / 裸露 / 色情」这类文字，页面上别处的「查看」不会点。浏览器只在标题含 Steam 的窗口里找，最小化的窗口不扫描。
 - 右键菜单新增开关「自动确认 Steam 创意工坊年龄提示」，默认开启；关闭自动审批时也一起暂停。
 - 「导出按钮文字（诊断）」会附上 Steam 窗口和找到的「查看物品」按钮，不起作用时用它排查。
-- 修复 Claude 窗口最小化后不自动审批：最小化时网页内容在一个隐藏的子窗口里，辅助功能默认读不到，现在直接读这个子窗口，不会还原或弹出窗口。诊断里会标出窗口是否最小化和隐藏的网页层。
+- Claude 窗口最小化后不自动审批的原因：Claude 没用辅助功能模式启动时，窗口在被读取前就最小化，页面内容不会提供出来，只剩标题栏按钮（CI 用 Edge 复现）。现在发现这种情况会在托盘弹一次提示，点提示即可「以辅助功能模式重启 Claude」，之后最小化也能自动审批。诊断里会标出窗口是否最小化。
 
 ### English
 
@@ -16,7 +16,7 @@
 - Only “View Item” on the gate is pressed: “Cancel” must sit right beside it and the 18+ / nudity text right above, so other “View” buttons are left alone. Browser windows are only scanned while their title mentions Steam; minimized windows are skipped.
 - A new tray menu switch, “Auto-confirm Steam Workshop age gate”, is on by default and pauses together with auto-approval.
 - “Export button labels (diagnostics)” now lists Steam windows and the “View Item” buttons found, for troubleshooting.
-- Fixes approvals stopping while a Claude window is minimized: the page then lives in a hidden child window that UI Automation skips, so it is now read directly, without restoring or showing the window. Diagnostics show whether a window is minimized and its hidden content window.
+- Approvals stopping while a Claude window is minimized: unless Claude runs with accessibility forced on, a window minimized before anything read it exposes only its title bar (reproduced with Edge in CI). This is now detected and a tray balloon offers to restart Claude with accessibility, after which minimized windows are approved too. Diagnostics show whether a window is minimized.
 
 ## 1.1.2
 

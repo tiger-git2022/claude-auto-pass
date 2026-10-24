@@ -29,7 +29,7 @@ namespace ClaudeAutoPass
         volatile bool running = true, locked;
         volatile int claudeWindows = -1;
         string scanError;
-        bool blindHintShown;
+        bool blindHintShown, blindBalloon;
 
         public TrayApp()
         {
@@ -44,6 +44,9 @@ namespace ClaudeAutoPass
             SystemEvents.UserPreferenceChanged += OnUserPreferenceChanged;
             tray.MouseClick += (s, e) => { if (e.Button == MouseButtons.Left) SetEnabled(!settings.Enabled); };
             tray.MouseUp += (s, e) => { if (e.Button == MouseButtons.Right) ShowMenu(); };
+            // Clicking the "minimized window can't be read" balloon offers the fix.
+            tray.BalloonTipClicked += (s, e) => { if (blindBalloon) { blindBalloon = false; RestartClaude(); } };
+            tray.BalloonTipClosed += (s, e) => blindBalloon = false;
             tray.Visible = true;
             Refresh();
 
@@ -135,8 +138,8 @@ namespace ClaudeAutoPass
                             {
                                 blindHintShown = true;
                                 string title = Shorten(result.Blind, 30);
-                                ui.Post(_ => tray.ShowBalloonTip(10000, "Claude 最小化后读不到审批卡片",
-                                    $"「{title}」最小化时 Claude 没有提供页面内容，这个窗口里的卡片不会被自动点。右键托盘图标选「以辅助功能模式重启 Claude」即可解决。", ToolTipIcon.Warning), null);
+                                ui.Post(_ => { blindBalloon = true; tray.ShowBalloonTip(15000, "Claude 最小化后读不到审批卡片",
+                                    $"「{title}」最小化时 Claude 没有提供页面内容，卡片不会被自动点。点这里以辅助功能模式重启 Claude，之后最小化也能自动审批。", ToolTipIcon.Warning); }, null);
                             }
                         }
                         if (result.Clicked != Kind.None)
@@ -251,7 +254,7 @@ namespace ClaudeAutoPass
                 return;
             }
             if (MessageBox.Show("将关闭 Claude Desktop，并加上 --force-renderer-accessibility 重新打开，让本工具能读到按钮。\n\n" +
-                    "只在「诊断」显示元素很少、自动审批不起作用时需要。未发送的输入可能丢失。继续吗？",
+                    "在「诊断」显示元素很少，或 Claude 最小化后不自动审批时需要。未发送的输入可能丢失。继续吗？",
                     "以辅助功能模式重启 Claude", MessageBoxButtons.OKCancel, MessageBoxIcon.Question) != DialogResult.OK) return;
             foreach (Process p in processes)
             {

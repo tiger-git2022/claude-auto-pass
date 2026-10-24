@@ -100,7 +100,8 @@ jobs:
           # Claude Desktop Code card: only Deny and "Always allow, save to local project settings" (exit code 3).
           $local = Run-Edge 'local' @('--force-renderer-accessibility') 'prompt-local.html' 3 'CLICKED-LOCAL'
           # Same prompt with the window minimized (owner report: approvals stopped while Claude was minimized).
-          # Informational: minimized before any UI Automation client asked for the page, without the switch.
+          # Informational: minimized before any UI Automation client asked for the page, without the switch. Chromium then
+          # exposes only the title bar (as on the owner's PC), which is what the tray app's warning balloon detects.
           $minimizedDefault = Run-Edge 'minimized-default' @() 'prompt.html' 0 'CLICKED-SESSION' $true
           Write-Host "Minimized without --force-renderer-accessibility: $minimizedDefault"
           # Required: minimized with the switch (what "restart Claude with accessibility" gives).

@@ -128,8 +128,8 @@ namespace ClaudeAutoPass
                 }
                 if (best != null && best.Kind == Kind.Session) break;
                 }
-                // Only the title bar's own buttons: Chromium has not built this page's accessibility tree (seen on minimized
-                // Claude windows that were never shown to a UI Automation client).
+                // Only the title bar's own buttons: Chromium builds no page tree for a window minimized before any UI Automation
+                // client asked for it, unless started with --force-renderer-accessibility (reproduced with Edge in CI).
                 if (windowButtons <= 3 && Native.IsIconic(window.Handle)) result.Blind = window.Title;
                 if (best != null && best.Kind == Kind.Session) break;
             }
@@ -146,22 +146,13 @@ namespace ClaudeAutoPass
             return result;
         }
 
-        /// <summary>
-        /// UI Automation roots for a window: the window itself, plus its web-content child windows when it is minimized or
-        /// hidden (diagnostics show whether they add anything).
-        /// </summary>
+        /// <summary>The window's UI Automation element, or nothing when it can't be read.</summary>
         IEnumerable<IUIAutomationElement> Roots(Native.Window window)
         {
-            var handles = new List<IntPtr> { window.Handle };
-            if (!window.Visible || Native.IsIconic(window.Handle))
-                handles.AddRange(Native.ContentWindows(window.Handle));
-            foreach (IntPtr handle in handles)
-            {
-                IUIAutomationElement root = null;
-                try { root = uia.ElementFromHandle(handle); }
-                catch (COMException) { }
-                if (root != null) yield return root;
-            }
+            IUIAutomationElement root = null;
+            try { root = uia.ElementFromHandle(window.Handle); }
+            catch (COMException) { }
+            if (root != null) yield return root;
         }
 
         List<Candidate> Buttons(IUIAutomationElement scope)
@@ -266,20 +257,19 @@ namespace ClaudeAutoPass
                 sb.AppendLine();
                 bool minimized = Native.IsIconic(w.Handle);
                 sb.AppendLine($"== 窗口 / Window 0x{w.Handle.ToInt64():X} \"{w.Title}\" class={w.ClassName} visible={w.Visible} minimized={minimized}");
-                foreach (IntPtr content in Native.ContentWindows(w.Handle))
-                    sb.AppendLine($"  网页层 / content window 0x{content.ToInt64():X} visible={Native.IsWindowVisible(content)}");
                 List<IUIAutomationElement> roots = Roots(w).ToList();
                 if (roots.Count == 0) { sb.AppendLine("  无法读取 / cannot read"); continue; }
                 for (int r = 0; r < roots.Count; r++)
                 {
                 IUIAutomationElement root = roots[r];
-                if (r > 0) sb.AppendLine("  -- 隐藏的网页层 / hidden content window");
                 int total = 0;
                 try { total = root.FindAll(TreeScope.TreeScope_Descendants, uia.CreateTrueCondition())?.Length ?? 0; }
                 catch (COMException) { }
                 List<Candidate> found = Buttons(root);
                 sb.AppendLine($"  元素总数 / elements: {total}，按钮 / buttons: {found.Count}");
-                if (total < 30)
+                if (total < 30 && minimized)
+                    sb.AppendLine("  窗口已最小化，且 Claude 没有提供页面内容：请在托盘菜单选择「以辅助功能模式重启 Claude」，之后最小化也能自动审批。 / Minimized without page content: restart Claude with accessibility.");
+                else if (total < 30)
                     sb.AppendLine("  元素很少：Claude 可能没有开启辅助功能树。可在托盘菜单选择「以辅助功能模式重启 Claude」。 / Few elements: try 'Restart Claude with accessibility'.");
                 foreach (Candidate c in found)
                 {
