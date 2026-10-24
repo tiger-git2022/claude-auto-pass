@@ -125,18 +125,20 @@ namespace ClaudeAutoPass
                 int wait = ScanIntervalMs;
                 try
                 {
+                    // Hiding and bringing back work even while approval is paused.
+                    int request = hideRequest;
+                    hideRequest = 0;
+                    if (request == 1)
+                    {
+                        scanner = scanner ?? new Scanner();
+                        int n = ClaudeHider.Hide(scanner.TargetWindows());
+                        ScanLog.Write($"已把 {n} 个 Claude 窗口藏到屏幕外 / hid {n} Claude windows off-screen", false);
+                    }
+                    else if (request == 2) ClaudeHider.ShowAll();
+                    foreach (string note in ClaudeHider.Tick()) ScanLog.Write(note, false);
                     if (settings.Enabled && !locked)
                     {
                         scanner = scanner ?? new Scanner();
-                        int request = hideRequest;
-                        hideRequest = 0;
-                        if (request == 1)
-                        {
-                            int n = ClaudeHider.Hide(scanner.TargetWindows());
-                            ScanLog.Write($"已把 {n} 个 Claude 窗口藏到屏幕外 / hid {n} Claude windows off-screen", false);
-                        }
-                        else if (request == 2) ClaudeHider.ShowAll();
-                        foreach (string note in ClaudeHider.Tick()) ScanLog.Write(note, false);
                         var watch = Stopwatch.StartNew();
                         ScanResult result = scanner.ScanOnce();
                         watch.Stop();
