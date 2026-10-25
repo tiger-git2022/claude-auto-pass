@@ -14,7 +14,7 @@
     <GenerateDocumentationFile>false</GenerateDocumentationFile>
     <DebugType>embedded</DebugType>
     <!-- Bump BaseVersion together with windows/CHANGELOG.md; CI passes BuildNumber (the N in win-vX.Y.Z-tN). -->
-    <BaseVersion>1.2.2</BaseVersion>
+    <BaseVersion>1.2.3</BaseVersion>
     <BuildNumber Condition="'$(BuildNumber)' == ''">0</BuildNumber>
     <Version>$(BaseVersion).$(BuildNumber)</Version>
     <FileVersion>$(BaseVersion).$(BuildNumber)</FileVersion>
