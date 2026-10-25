@@ -100,6 +100,8 @@ namespace ClaudeAutoPass
             decideTimer = null;
             launchTimer?.Dispose();
             launchTimer = null;
+            trayCheck?.Dispose();
+            trayCheck = null;
         }
 
         static bool IsClaudeProcess(int pid)
@@ -253,6 +255,14 @@ namespace ClaudeAutoPass
         /// <summary>Restores the window and puts it in front (borrowing the input of the window that has the focus now).</summary>
         static void Bring(IntPtr h)
         {
+            // A main window Claude itself hid (X, closed to the tray) must be shown by Claude: showing it from outside makes
+            // the window appear but Chromium keeps its content hidden, so it looks frozen and takes no input (owner's report
+            // on 1.2.3). Claude shows it when its tray icon is clicked, so click that instead.
+            if (!IsWindowVisible(h) && UseTrayIcon && ClickTrayIcon(h))
+            {
+                ScheduleTrayCheck(h);
+                return;
+            }
             if (!IsWindowVisible(h)) ShowWindow(h, Show);
             if (IsIconic(h)) ShowWindow(h, Restore);
             uint self = GetCurrentThreadId();
@@ -265,6 +275,56 @@ namespace ClaudeAutoPass
             }
             finally { if (attached) AttachThreadInput(self, focused, false); }
         }
+
+        // Electron's tray icons: a hidden "Electron_NotifyIconHostWindow" in the main process receives the icon's mouse
+        // messages as WM_APP + 1, with the icon's id (from 2 up) in wParam and the mouse message in lParam.
+        const string TrayHostClass = "Electron_NotifyIconHostWindow";
+        const uint TrayMessage = 0x8000 + 1, LeftButtonDown = 0x0201;
+        const int FirstTrayIconId = 2, LastTrayIconId = 9;
+
+        /// <summary>Clicks the tray icon of the process that owns this window; false when it has no Electron tray icon.</summary>
+        static bool ClickTrayIcon(IntPtr main)
+        {
+            GetWindowThreadProcessId(main, out uint pid);
+            var hosts = new List<IntPtr>();
+            foreach (IntPtr parent in new[] { IntPtr.Zero, MessageOnly })
+            {
+                IntPtr host = IntPtr.Zero;
+                while ((host = FindWindowEx(parent, host, TrayHostClass, null)) != IntPtr.Zero)
+                {
+                    GetWindowThreadProcessId(host, out uint owner);
+                    if (owner == pid) hosts.Add(host);
+                }
+            }
+            if (hosts.Count == 0) return false;
+            AllowSetForegroundWindow(pid); // so Claude may bring its window to the front
+            foreach (IntPtr host in hosts)
+                for (int id = FirstTrayIconId; id <= LastTrayIconId; id++) // ids that match no icon are ignored
+                    PostMessage(host, TrayMessage, (IntPtr)id, (IntPtr)LeftButtonDown);
+            log?.Invoke("单击任务栏：已单击 Claude 的托盘图标来打开主窗口 / clicked Claude's tray icon to open its main window");
+            return true;
+        }
+
+        /// <summary>False only in a self-test comparing with showing the window from outside.</summary>
+        internal static bool UseTrayIcon = true;
+
+        static System.Windows.Forms.Timer trayCheck;
+
+        /// <summary>Notes in the scan log whether the tray click opened the main window.</summary>
+        static void ScheduleTrayCheck(IntPtr main)
+        {
+            trayCheck?.Dispose();
+            var check = trayCheck = new System.Windows.Forms.Timer { Interval = 1500 };
+            check.Tick += (s, e) =>
+            {
+                check.Stop();
+                if (!IsWindowVisible(main))
+                    log?.Invoke("单击任务栏：托盘图标没打开 Claude 主窗口，请右键托盘图标打开 / the tray click did not open Claude's main window");
+            };
+            check.Start();
+        }
+
+        static readonly IntPtr MessageOnly = new IntPtr(-3);
 
         static string ClassOf(IntPtr h)
         {
@@ -336,5 +396,8 @@ namespace ClaudeAutoPass
         [DllImport("user32.dll")] static extern IntPtr GetForegroundWindow();
         [DllImport("user32.dll")] static extern bool AttachThreadInput(uint attach, uint to, bool on);
         [DllImport("kernel32.dll")] static extern uint GetCurrentThreadId();
+        [DllImport("user32.dll", CharSet = CharSet.Unicode)] static extern IntPtr FindWindowEx(IntPtr parent, IntPtr after, string className, string title);
+        [DllImport("user32.dll")] static extern bool PostMessage(IntPtr hwnd, uint msg, IntPtr wParam, IntPtr lParam);
+        [DllImport("user32.dll")] static extern bool AllowSetForegroundWindow(uint pid);
     }
 }

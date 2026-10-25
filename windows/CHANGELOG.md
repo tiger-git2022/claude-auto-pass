@@ -1,5 +1,17 @@
 # Windows 版更新记录 / Windows Changelog
 
+## 1.2.5
+
+### 中文
+
+- 修复「单击任务栏打开 Claude 主窗口」打开后界面卡死、点不动：Claude 主窗口收到托盘（点 X）时，1.2.3 是从外面直接把窗口显示出来，窗口虽然出现了，但 Claude 内部还认为它是隐藏的，页面不刷新也不响应点击。现在改成替你单击 Claude 的托盘图标，让 Claude 自己打开主窗口，和从托盘菜单打开一样。最小化时的打开方式不变。
+- 如果单击托盘图标后主窗口没打开，扫描日志会记一条，方便排查。
+
+### English
+
+- Fixes Claude's main window being frozen after “Click the taskbar to open Claude's main window” opened it: when the main window was closed to the tray (X), 1.2.3 showed it from outside, and the window appeared while Claude still treated it as hidden, so the page neither redrew nor took clicks. Now the tool clicks Claude's tray icon so Claude opens its main window itself, the same as opening it from the tray menu. Opening a minimized window is unchanged.
+- If the tray click does not open the main window, the scan log notes it for troubleshooting.
+
 ## 1.2.4
 
 ### 中文
