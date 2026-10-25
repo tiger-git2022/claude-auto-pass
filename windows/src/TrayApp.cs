@@ -55,6 +55,7 @@ namespace ClaudeAutoPass
 
             SystemEvents.SessionSwitch += OnSessionSwitch;
             ClaudeHider.Start(note => ScanLog.Write(note, false));
+            ClaudeTaskbar.Start(() => settings.TaskbarOpen, note => ScanLog.Write(note));
             worker = new Thread(ScanLoop) { IsBackground = true, Name = "scan" };
             worker.SetApartmentState(ApartmentState.MTA);
             worker.Start();
@@ -95,6 +96,7 @@ namespace ClaudeAutoPass
                 new TrayMenu.Entry { Text = on ? "关闭自动审批" : "开启自动审批", Bold = true, Icon = on ? SymbolRegular.Pause24 : SymbolRegular.Play24, Click = Later(() => SetEnabled(!on)) },
                 new TrayMenu.Entry { Text = "自动确认 Steam 创意工坊年龄提示", Icon = settings.SteamGate ? SymbolRegular.CheckboxChecked24 : SymbolRegular.CheckboxUnchecked24, Click = Later(() => { settings.SteamGate = !settings.SteamGate; Refresh(); }) },
                 new TrayMenu.Entry { Text = ClaudeHider.Any ? "把 Claude 拿回来" : "把 Claude 藏到屏幕外（代替最小化）", Icon = ClaudeHider.Any ? SymbolRegular.Eye24 : SymbolRegular.EyeOff24, Click = Later(() => { hideRequest = ClaudeHider.Any ? 2 : 1; }) },
+                new TrayMenu.Entry { Text = "单击任务栏打开 Claude 主窗口", Icon = settings.TaskbarOpen ? SymbolRegular.CheckboxChecked24 : SymbolRegular.CheckboxUnchecked24, Click = Later(() => { settings.TaskbarOpen = !settings.TaskbarOpen; Refresh(); }) },
                 new TrayMenu.Entry { Text = "开机自动启动", Icon = autostart ? SymbolRegular.CheckboxChecked24 : SymbolRegular.CheckboxUnchecked24, Click = Later(ToggleAutostart) },
                 new TrayMenu.Entry { Separator = true },
                 new TrayMenu.Entry { Text = "导出按钮文字（诊断）…", Icon = SymbolRegular.DocumentSearch24, Click = Later(Diagnose) },
@@ -370,6 +372,7 @@ namespace ClaudeAutoPass
             running = false;
             try { ClaudeHider.ShowAll(); } catch (Exception) { } // never leave Claude off-screen
             ClaudeHider.Stop();
+            ClaudeTaskbar.Stop();
             SystemEvents.SessionSwitch -= OnSessionSwitch;
             SystemEvents.UserPreferenceChanged -= OnUserPreferenceChanged;
             menu.Close();

@@ -253,6 +253,7 @@ namespace ClaudeAutoPass
             List<Native.Window> scanned = TargetWindows();
             sb.AppendLine("窗口 / windows: " + all.Count + "，扫描 / scanned: " + scanned.Count);
             if (ids.Count > 0) sb.Append(ProcessArgs.Describe(ids));
+            if (ids.Count > 0) sb.Append("Claude 顶层窗口 / top-level windows:\r\n" + ClaudeTaskbar.DescribeAll(ids));
             foreach (Native.Window w in scanned)
             {
                 sb.AppendLine();

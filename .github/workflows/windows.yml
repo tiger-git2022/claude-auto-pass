@@ -62,6 +62,14 @@ jobs:
           if (Test-Path $out) { Get-Content $out }
           if (Test-Path "$out.crash.txt") { Get-Content "$out.crash.txt" }
           if ($p.ExitCode -ne 0) { Write-Error "WinForms self-test failed ($($p.ExitCode))"; exit 1 }
+      - name: Self-test opening Claude from the taskbar
+        if: steps.version.outputs.skip != 'true'
+        run: |
+          $out = "$env:RUNNER_TEMP/selftest-taskbar.txt"
+          $p = Start-Process dist/claude-auto-pass.exe -ArgumentList '--self-test-taskbar', $out -Wait -PassThru
+          if (Test-Path $out) { Get-Content $out }
+          if (Test-Path "$out.crash.txt") { Get-Content "$out.crash.txt" }
+          if ($p.ExitCode -ne 0) { Write-Error "Taskbar self-test failed ($($p.ExitCode))"; exit 1 }
       - name: Self-test with Edge (Chromium, like Claude Desktop)
         if: steps.version.outputs.skip != 'true'
         run: |
