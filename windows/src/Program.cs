@@ -22,6 +22,8 @@ namespace ClaudeAutoPass
             if (args.Length >= 2 && args[0] == "--self-test-form") return SelfTest.Form(args[1]);
             if (args.Length >= 2 && args[0] == "--self-test-menu") return SelfTest.Menu(args[1]);
             if (args.Length >= 4 && args[0] == "--self-test-process") return SelfTest.Process(args[1], int.Parse(args[2]), args[3], args.Length >= 5 && args[4] == "--hide");
+            if (args.Length >= 2 && args[0] == "--self-test-taskbar") return SelfTest.Taskbar(args[1]);
+            if (args.Length >= 3 && args[0] == "--self-test-hider") return SelfTest.Hider(args[1], args[2]);
             if (args.Length >= 4 && args[0] == "--self-test-steam") return SelfTest.Steam(args[1], int.Parse(args[2]), args[3]);
 
             bool updated = args.Contains("--updated");
@@ -87,6 +89,133 @@ namespace ClaudeAutoPass
             File.WriteAllText(output, log);
             return code;
         }
+
+        /// <summary>
+        /// "把 Claude 藏到屏幕外" and the taskbar, on a browser window: a click on the button of a hidden Claude that is the active
+        /// window (Windows minimizes it) brings it back on-screen; minimized together with other windows (Win+M) it stays
+        /// minimized but opens on-screen; minimizing another program leaves it hidden.
+        /// </summary>
+        public static int Hider(string processName, string output)
+        {
+            var log = new System.Text.StringBuilder();
+            int code = 1;
+            var ids = new System.Collections.Generic.HashSet<int>(System.Diagnostics.Process.GetProcessesByName(processName).Select(p => p.Id));
+            var form = new Form { Text = "hider self-test", Width = 320, Height = 200, StartPosition = FormStartPosition.Manual, Location = new Point(60, 60) };
+            ClaudeHider.Start(note => log.AppendLine("  note: " + note));
+            form.Shown += async (s, e) =>
+            {
+                try
+                {
+                    Native.Window window = Native.TopLevelWindows(ids).FirstOrDefault(w => w.Visible && w.Title.Length > 0);
+                    if (window == null) { log.AppendLine("no window"); return; }
+                    IntPtr h = window.Handle;
+                    bool onScreen = false, iconic = false;
+                    void Check(string step) => log.AppendLine(step + ": " + ClaudeHider.Describe(h, out onScreen, out iconic));
+
+                    // 1. Taskbar click while the hidden window is the active one: Windows sends it "minimize".
+                    log.AppendLine("hid " + ClaudeHider.Hide(new[] { window }));
+                    await System.Threading.Tasks.Task.Delay(2500);
+                    Check("hidden");
+                    bool wasAway = !onScreen;
+                    PostMessage(h, 0x0112, new IntPtr(0xF020), IntPtr.Zero); // WM_SYSCOMMAND, SC_MINIMIZE
+                    await System.Threading.Tasks.Task.Delay(1500);
+                    Check("taskbar click");
+                    bool clickOk = wasAway && onScreen && !iconic && !ClaudeHider.Any;
+
+                    // 2. Minimizing another program leaves Claude hidden (informational: with no other window on the desktop,
+                    // Windows may still hand the focus to Claude).
+                    ClaudeHider.Hide(new[] { window });
+                    await System.Threading.Tasks.Task.Delay(2500);
+                    form.WindowState = FormWindowState.Minimized;
+                    await System.Threading.Tasks.Task.Delay(1500);
+                    Check("other minimized (informational)");
+                    form.WindowState = FormWindowState.Normal;
+                    ClaudeHider.ShowAll();
+                    await System.Threading.Tasks.Task.Delay(1000);
+
+                    // 3. Win+M: minimized together with another window, it stays minimized at its old place...
+                    ClaudeHider.Hide(new[] { window });
+                    await System.Threading.Tasks.Task.Delay(2500);
+                    ShowWindow(h, 6);
+                    form.WindowState = FormWindowState.Minimized;
+                    await System.Threading.Tasks.Task.Delay(1500);
+                    Check("minimized with others");
+                    bool togetherOk = onScreen && iconic && !ClaudeHider.Any;
+                    // ...so the next taskbar click opens it on-screen.
+                    ShowWindow(h, 9); // SW_RESTORE
+                    await System.Threading.Tasks.Task.Delay(1000);
+                    Check("restored");
+                    bool restoreOk = onScreen && !iconic;
+
+                    log.AppendLine($"click={clickOk} together={togetherOk} restore={restoreOk}");
+                    code = clickOk && togetherOk && restoreOk ? 0 : 1;
+                }
+                catch (Exception ex) { log.AppendLine(ex.ToString()); }
+                finally
+                {
+                    ClaudeHider.ShowAll();
+                    ClaudeHider.Stop();
+                    form.Close();
+                }
+            };
+            Application.Run(form);
+            File.WriteAllText(output, log.ToString());
+            return code;
+        }
+
+        /// <summary>
+        /// "单击任务栏打开 Claude", with this process standing in for Claude: another window of it shown (Claude's quick entry
+        /// after a taskbar click) while the main window is minimized restores the main window; not right after minimizing, and
+        /// not when switched off.
+        /// </summary>
+        public static int Taskbar(string output)
+        {
+            var log = new System.Text.StringBuilder();
+            int code = 1;
+            int self = System.Diagnostics.Process.GetCurrentProcess().Id;
+            bool enabled = true;
+            var main = new Form { Text = "Claude", Width = 640, Height = 420, StartPosition = FormStartPosition.Manual, Location = new Point(80, 80) };
+            var quick = new Form { Text = "Quick entry", Width = 360, Height = 90, StartPosition = FormStartPosition.Manual, Location = new Point(400, 600), ShowInTaskbar = false };
+            ClaudeTaskbar.Start(() => enabled, note => log.AppendLine("  note: " + note), pid => pid == self, chromiumWindowsOnly: false);
+            main.Shown += async (s, e) =>
+            {
+                try
+                {
+                    async System.Threading.Tasks.Task<bool> Case(string name, int waitBeforeShow, bool on)
+                    {
+                        enabled = on;
+                        quick.Hide();
+                        main.WindowState = FormWindowState.Minimized;
+                        await System.Threading.Tasks.Task.Delay(waitBeforeShow);
+                        quick.Show();
+                        await System.Threading.Tasks.Task.Delay(1500);
+                        bool restored = main.WindowState != FormWindowState.Minimized;
+                        log.AppendLine($"{name}: restored={restored}");
+                        main.WindowState = FormWindowState.Normal;
+                        await System.Threading.Tasks.Task.Delay(1000);
+                        return restored;
+                    }
+                    bool click = await Case("click while minimized", 2500, true);
+                    bool justMinimized = await Case("right after minimizing", 300, true);
+                    bool off = await Case("switched off", 2500, false);
+                    log.AppendLine($"click={click} justMinimized={justMinimized} off={off}");
+                    code = click && !justMinimized && !off ? 0 : 1;
+                }
+                catch (Exception ex) { log.AppendLine(ex.ToString()); }
+                finally
+                {
+                    ClaudeTaskbar.Stop();
+                    quick.Close();
+                    main.Close();
+                }
+            };
+            Application.Run(main);
+            File.WriteAllText(output, log.ToString());
+            return code;
+        }
+
+        [System.Runtime.InteropServices.DllImport("user32.dll")] static extern bool PostMessage(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam);
+        [System.Runtime.InteropServices.DllImport("user32.dll")] static extern bool ShowWindow(IntPtr hwnd, int cmd);
 
         /// <summary>Scans a browser showing a mock Steam Workshop gate until it presses "查看物品" (exit 0).</summary>
         public static int Steam(string processName, int seconds, string output)
@@ -257,6 +386,7 @@ namespace ClaudeAutoPass
                 new TrayMenu.Entry { Text = "关闭自动审批", Bold = true, Icon = Wpf.Ui.Controls.SymbolRegular.Pause24, Click = none },
                 new TrayMenu.Entry { Text = "自动确认 Steam 创意工坊年龄提示", Icon = Wpf.Ui.Controls.SymbolRegular.CheckboxChecked24, Click = none },
                 new TrayMenu.Entry { Text = "把 Claude 藏到屏幕外（代替最小化）", Icon = Wpf.Ui.Controls.SymbolRegular.EyeOff24, Click = none },
+                new TrayMenu.Entry { Text = "单击任务栏打开 Claude 主窗口", Icon = Wpf.Ui.Controls.SymbolRegular.CheckboxChecked24, Click = none },
                 new TrayMenu.Entry { Text = "开机自动启动", Icon = Wpf.Ui.Controls.SymbolRegular.CheckboxChecked24, Click = none },
                 new TrayMenu.Entry { Separator = true },
                 new TrayMenu.Entry { Text = "导出按钮文字（诊断）…", Icon = Wpf.Ui.Controls.SymbolRegular.DocumentSearch24, Click = none },

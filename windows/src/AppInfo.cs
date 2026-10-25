@@ -72,6 +72,13 @@ namespace ClaudeAutoPass
             set => Set("steam_gate", value ? "1" : "0");
         }
 
+        /// <summary>Open Claude's main window when its taskbar button is clicked while minimized (on unless switched off).</summary>
+        public bool TaskbarOpen
+        {
+            get => Get("taskbar_open") != "0";
+            set => Set("taskbar_open", value ? "1" : "0");
+        }
+
         public string LastAction
         {
             get => Get("last_action");

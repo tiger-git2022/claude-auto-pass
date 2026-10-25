@@ -1,5 +1,27 @@
 # Windows 版更新记录 / Windows Changelog
 
+## 1.2.2
+
+### 中文
+
+- 新增右键菜单开关「单击任务栏打开 Claude 主窗口」（默认开启）：Claude 自己在 Windows 上单击任务栏图标只会弹快速输入框，不打开主窗口（[anthropics/claude-code#22420](https://github.com/anthropics/claude-code/issues/22420)），最小化后只能右键打开。现在 Claude 最小化时，只要它的某个窗口被激活或弹出，本工具就把主窗口还原到前台。刚最小化 1.5 秒内不会触发，免得点任务栏最小化后又弹回来。最小化状态下用快捷键呼出快速输入框也会带出主窗口，不想要可以关掉这个开关。
+- 扫描日志会记下 Claude 最小化期间的窗口事件，「导出按钮文字（诊断）」会列出 Claude 的所有顶层窗口，如果单击还是打不开，把诊断和日志发来就能看出 Claude 实际做了什么。
+- 修复「藏到屏幕外」实际没把窗口移出去：Windows 会把完全在屏幕外的位置自动拉回屏幕内（CI 新测试发现），现在改用另一种方式移动窗口。
+- 修复「藏到屏幕外」之后在任务栏单击、双击 Claude 都打不开：Claude 还是当前窗口时，单击任务栏会被 Windows 当成最小化，再点又回到屏幕外。现在本工具实时监听窗口切换和最小化，单击任务栏上的 Claude 就立刻回到原位并切到前台，不用再等下一轮扫描。
+- 按 Win+M 之类和其他窗口一起最小化时，Claude 保持最小化，但位置已放回屏幕内，之后在任务栏点它就正常打开。
+- 藏起来的 Claude 会排到所有窗口最后，关掉或最小化别的程序时焦点不会落到它身上，也就不会被误拿回来。
+- CI 新增测试：藏起来后模拟任务栏单击、Win+M、再点任务栏还原（Edge）；最小化时弹出另一个窗口会带出主窗口。
+
+### English
+
+- New tray switch “Click the taskbar to open Claude's main window” (on by default): on Windows, Claude itself answers a click on its taskbar icon with the quick entry bar instead of the main window ([anthropics/claude-code#22420](https://github.com/anthropics/claude-code/issues/22420)), so a minimized Claude only opens from the right-click menu. Now, while Claude is minimized, any of its windows being activated or shown restores the main window in front. Not within 1.5 s of minimizing, so minimizing from the taskbar doesn't bounce back. Calling up the quick entry with its shortcut while minimized also brings the main window; switch this off if that's unwanted.
+- The scan log records Claude's window events while it is minimized, and “Export button labels (diagnostics)” lists all of Claude's top-level windows, so if a click still doesn't open it, the diagnostics and log show what Claude really does.
+- Fixes “Hide Claude off-screen” not actually moving the window: Windows pulls a placement that is completely off-screen back onto a monitor (found by the new CI test); the window is now moved another way.
+- Fixes a click or double-click on Claude in the taskbar not opening it after “Hide Claude off-screen”: while Claude was still the active window, Windows took the click as minimize, and the next click restored it off-screen again. This tool now listens for window switches and minimizing, so one click on Claude in the taskbar brings it back right away, in front, without waiting for the next scan.
+- Minimized together with other windows (Win+M and the like), Claude stays minimized but with its place back on-screen, so a later taskbar click opens it normally.
+- A hidden Claude goes to the back of the window order, so closing or minimizing another program doesn't hand it the focus and bring it back by mistake.
+- New CI tests: hide, then a simulated taskbar click, Win+M and restoring from the taskbar (Edge); another window shown while minimized brings the main window.
+
 ## 1.2.1
 
 ### 中文

@@ -62,6 +62,14 @@ jobs:
           if (Test-Path $out) { Get-Content $out }
           if (Test-Path "$out.crash.txt") { Get-Content "$out.crash.txt" }
           if ($p.ExitCode -ne 0) { Write-Error "WinForms self-test failed ($($p.ExitCode))"; exit 1 }
+      - name: Self-test opening Claude from the taskbar
+        if: steps.version.outputs.skip != 'true'
+        run: |
+          $out = "$env:RUNNER_TEMP/selftest-taskbar.txt"
+          $p = Start-Process dist/claude-auto-pass.exe -ArgumentList '--self-test-taskbar', $out -Wait -PassThru
+          if (Test-Path $out) { Get-Content $out }
+          if (Test-Path "$out.crash.txt") { Get-Content "$out.crash.txt" }
+          if ($p.ExitCode -ne 0) { Write-Error "Taskbar self-test failed ($($p.ExitCode))"; exit 1 }
       - name: Self-test with Edge (Chromium, like Claude Desktop)
         if: steps.version.outputs.skip != 'true'
         run: |
@@ -130,6 +138,19 @@ jobs:
           # ...and "把 Claude 藏到屏幕外" (instead of minimizing) keeps it updating, from a normal or a minimized window.
           $hidden = Run-Edge 'late-hidden' $switches 'prompt-late.html' 0 'CLICKED-SESSION' 'none' @('--hide')
           $hiddenMin = Run-Edge 'late-hidden-minimized' $switches 'prompt-late.html' 0 'CLICKED-SESSION' 'minimize' @('--hide')
+          # Taskbar clicks on a hidden Claude: a click (Windows minimizes the active window) brings it back on-screen; minimized
+          # with other windows (Win+M) it stays minimized but opens on-screen.
+          Get-Process msedge -ErrorAction SilentlyContinue | Stop-Process -Force
+          Start-Sleep 2
+          $page = [Uri]::new((Resolve-Path 'windows/tests/prompt.html').Path).AbsoluteUri
+          Start-Process $edge -ArgumentList (@("--user-data-dir=$env:RUNNER_TEMP\edge-hider", '--no-first-run', '--no-default-browser-check', "--app=$page") + $switches)
+          Start-Sleep 10
+          $out = "$env:RUNNER_TEMP/selftest-hider.txt"
+          $p = Start-Process dist/claude-auto-pass.exe -ArgumentList '--self-test-hider', 'msedge', $out -Wait -PassThru
+          Write-Host "== hider : exit=$($p.ExitCode)"
+          if (Test-Path $out) { Get-Content $out | ForEach-Object { Write-Host $_ } }
+          if (Test-Path "$out.crash.txt") { Get-Content "$out.crash.txt" | ForEach-Object { Write-Host $_ } }
+          $hider = ($p.ExitCode -eq 0)
           Get-Process msedge -ErrorAction SilentlyContinue | Stop-Process -Force
           # Steam Workshop adult-content gate: presses the clickable "查看物品" box, not the decoy or "取消".
           $page = [Uri]::new((Resolve-Path 'windows/tests/steam-gate.html').Path).AbsoluteUri
@@ -151,6 +172,7 @@ jobs:
           if (-not $lateCover) { Write-Error 'Edge covered-window self-test failed'; exit 1 }
           if (-not $hidden) { Write-Error 'Edge off-screen self-test failed'; exit 1 }
           if (-not $hiddenMin) { Write-Error 'Edge off-screen-from-minimized self-test failed'; exit 1 }
+          if (-not $hider) { Write-Error 'Edge taskbar-click-on-hidden self-test failed'; exit 1 }
       - name: Self-test tray menu (screenshots)
         if: steps.version.outputs.skip != 'true'
         run: |
