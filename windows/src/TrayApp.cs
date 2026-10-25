@@ -54,6 +54,7 @@ namespace ClaudeAutoPass
             Refresh();
 
             SystemEvents.SessionSwitch += OnSessionSwitch;
+            ClaudeHider.Start(note => ScanLog.Write(note, false));
             worker = new Thread(ScanLoop) { IsBackground = true, Name = "scan" };
             worker.SetApartmentState(ApartmentState.MTA);
             worker.Start();
@@ -368,6 +369,7 @@ namespace ClaudeAutoPass
         {
             running = false;
             try { ClaudeHider.ShowAll(); } catch (Exception) { } // never leave Claude off-screen
+            ClaudeHider.Stop();
             SystemEvents.SessionSwitch -= OnSessionSwitch;
             SystemEvents.UserPreferenceChanged -= OnUserPreferenceChanged;
             menu.Close();
