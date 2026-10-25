@@ -74,8 +74,10 @@ namespace ClaudeAutoPass
                     away.rcNormalPosition = new RECT { Left = left, Top = r.Top, Right = left + (r.Right - r.Left), Bottom = r.Bottom };
                     if (!SetWindowPlacement(w.Handle, ref away)) continue;
                     // Last in line, so closing or minimizing another program doesn't hand the focus to the hidden Claude (that
-                    // would count as switching to it and bring it back).
-                    SetWindowPos(w.Handle, Bottom, 0, 0, 0, 0, NoSize | NoMove | NoActivate);
+                    // would count as switching to it and bring it back). Not for an always-on-top window: that would lose its
+                    // topmost state for good.
+                    if ((GetWindowLong(w.Handle, ExStyle) & TopmostStyle) == 0)
+                        SetWindowPos(w.Handle, Bottom, 0, 0, 0, 0, NoSize | NoMove | NoActivate);
                     Hidden[w.Handle] = original;
                     count++;
                 }
@@ -200,6 +202,7 @@ namespace ClaudeAutoPass
         const int RestoreToMaximized = 2;
         static readonly IntPtr Bottom = new IntPtr(1);
         const uint NoSize = 0x1, NoMove = 0x2, NoActivate = 0x10;
+        const int ExStyle = -20, TopmostStyle = 0x8;
         const uint EventForeground = 0x0003, EventMinimizeStart = 0x0016, OutOfContext = 0;
 
         delegate void WinEventProc(IntPtr hook, uint ev, IntPtr hwnd, int idObject, int idChild, uint thread, uint time);
@@ -232,6 +235,7 @@ namespace ClaudeAutoPass
         [DllImport("user32.dll")] static extern IntPtr GetForegroundWindow();
         [DllImport("user32.dll")] static extern bool SetForegroundWindow(IntPtr hwnd);
         [DllImport("user32.dll")] static extern bool IsWindow(IntPtr hwnd);
+        [DllImport("user32.dll")] static extern int GetWindowLong(IntPtr hwnd, int index);
         [DllImport("user32.dll")] static extern bool SetWindowPos(IntPtr hwnd, IntPtr after, int x, int y, int cx, int cy, uint flags);
         [DllImport("user32.dll")] static extern bool IsIconic(IntPtr hwnd);
         [DllImport("user32.dll")] static extern IntPtr SetWinEventHook(uint min, uint max, IntPtr module, WinEventProc proc, uint process, uint thread, uint flags);
