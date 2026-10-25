@@ -139,7 +139,10 @@ namespace ClaudeAutoPass
             Release best = await NewestCompleteAsync(site, notesByTag.Keys, notesByTag).ConfigureAwait(false);
             if (best != null) return best;
 
-            return await NewestFromTagsAsync(notesByTag).ConfigureAwait(false);
+            // Nothing complete among the newest tags (say, several failed builds in a row): report it as a failure so
+            // CheckAsync asks the API instead of saying "up to date".
+            return await NewestFromTagsAsync(notesByTag).ConfigureAwait(false)
+                ?? throw new HttpRequestException("网页上没找到带安装文件的 Windows 版本 / no complete Windows release on the website");
         }
 
         /// <summary>Newest complete Windows release from the repository's tag list (no notes unless given).</summary>
