@@ -269,11 +269,16 @@ namespace ClaudeAutoPass
                     sums = Updater.GetForTest(web.SumsUrl);
                     log.AppendLine("sums: " + sums.Trim());
                 }
+                Release tags = Updater.NewestFromTagsAsync(null).GetAwaiter().GetResult();
+                log.AppendLine($"tags: tag={tags?.Tag} digest={tags?.ExeDigest}");
+                log.AppendLine($"website digest={web?.ExeDigest}");
                 Release api = null;
                 try { api = Updater.NewestFromApiAsync().GetAwaiter().GetResult(); log.AppendLine($"api: tag={api?.Tag}"); }
                 catch (Exception ex) { log.AppendLine("api failed (allowed): " + ex.Message); }
                 bool ok = web != null && Versioning.Parse(web.Tag, true) != null && sums != null && sums.Contains(AppInfo.AssetName)
-                    && !string.IsNullOrEmpty(web.Notes) && (api == null || api.Tag == web.Tag);
+                    && !string.IsNullOrEmpty(web.Notes) && web.ExeDigest != null
+                    && tags != null && tags.Tag == web.Tag && tags.ExeDigest == web.ExeDigest
+                    && (api == null || (api.Tag == web.Tag && (api.ExeDigest == null || api.ExeDigest == web.ExeDigest)));
                 code = ok ? 0 : 1;
             }
             catch (Exception ex) { log.AppendLine("error: " + ex); }

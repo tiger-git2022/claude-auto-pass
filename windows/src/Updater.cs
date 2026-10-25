@@ -117,30 +117,15 @@ namespace ClaudeAutoPass
         }
 
         /// <summary>
-        /// Newest Windows release from the website instead of the API: the release feed (newest 10 releases, with notes),
-        /// or, if no Windows release is among them, the repository's tag list. The exe is checked against SHA256SUMS.txt.
+        /// Newest complete Windows release from the website instead of the API: the release feed (newest 10 releases, with
+        /// notes), or, if none of those is a complete Windows release, the repository's tag list. A release counts only once
+        /// its SHA256SUMS.txt downloads and names the exe (a tag can exist before its release has files, or without one when
+        /// a build failed); that checksum then verifies the download.
         /// </summary>
         internal static async Task<Release> NewestFromWebsiteAsync()
         {
             string site = "https://github.com/" + AppInfo.Repo;
-            Release best = null;
-            int[] bestVersion = null;
-            void Consider(string tag, string notes)
-            {
-                int[] version = Versioning.Parse(tag, true);
-                if (version == null || (bestVersion != null && Versioning.Compare(version, bestVersion) <= 0)) return;
-                string escaped = Uri.EscapeDataString(tag);
-                best = new Release
-                {
-                    Tag = tag,
-                    Notes = notes,
-                    HtmlUrl = site + "/releases/tag/" + escaped,
-                    ExeUrl = site + "/releases/download/" + escaped + "/" + AppInfo.AssetName,
-                    SumsUrl = site + "/releases/download/" + escaped + "/SHA256SUMS.txt",
-                };
-                bestVersion = version;
-            }
-
+            var notesByTag = new Dictionary<string, string>();
             string feed = await GetAsync(site + "/releases.atom", "application/atom+xml").ConfigureAwait(false);
             System.Xml.Linq.XNamespace atom = "http://www.w3.org/2005/Atom";
             foreach (System.Xml.Linq.XElement entry in System.Xml.Linq.XDocument.Parse(feed).Root.Elements(atom + "entry"))
@@ -148,16 +133,57 @@ namespace ClaudeAutoPass
                 string link = (string)entry.Element(atom + "link")?.Attribute("href") ?? "";
                 int at = link.LastIndexOf("/releases/tag/", StringComparison.Ordinal);
                 if (at < 0) continue;
-                Consider(Uri.UnescapeDataString(link.Substring(at + "/releases/tag/".Length)), HtmlToText((string)entry.Element(atom + "content") ?? ""));
+                string tag = Uri.UnescapeDataString(link.Substring(at + "/releases/tag/".Length));
+                if (Versioning.Parse(tag, true) != null) notesByTag[tag] = HtmlToText((string)entry.Element(atom + "content") ?? "");
             }
+            Release best = await NewestCompleteAsync(site, notesByTag.Keys, notesByTag).ConfigureAwait(false);
             if (best != null) return best;
 
+            return await NewestFromTagsAsync(notesByTag).ConfigureAwait(false);
+        }
+
+        /// <summary>Newest complete Windows release from the repository's tag list (no notes unless given).</summary>
+        internal static async Task<Release> NewestFromTagsAsync(Dictionary<string, string> notesByTag)
+        {
+            string site = "https://github.com/" + AppInfo.Repo;
             // Smart-HTTP ref advertisement: lines like "<sha> refs/tags/win-v1.2.3-t1".
             string refs = await GetAsync(site + ".git/info/refs?service=git-upload-pack", null).ConfigureAwait(false);
-            foreach (System.Text.RegularExpressions.Match m in System.Text.RegularExpressions.Regex.Matches(refs, @"refs/tags/(win-v[0-9.]+-t[0-9]+)(?![0-9^])"))
-                Consider(m.Groups[1].Value, null);
-            return best;
+            var tags = System.Text.RegularExpressions.Regex.Matches(refs, @"refs/tags/(win-v[0-9.]+-t[0-9]+)(?![0-9^])")
+                .Cast<System.Text.RegularExpressions.Match>().Select(m => m.Groups[1].Value);
+            return await NewestCompleteAsync(site, tags, notesByTag ?? new Dictionary<string, string>()).ConfigureAwait(false);
         }
+
+        /// <summary>Tries the newest few tags in turn and returns the first whose checksum file names the exe.</summary>
+        static async Task<Release> NewestCompleteAsync(string site, IEnumerable<string> tags, Dictionary<string, string> notesByTag)
+        {
+            var newestFirst = tags.Distinct().Where(t => Versioning.Parse(t, true) != null)
+                .OrderByDescending(t => t, Comparer<string>.Create((x, y) => Versioning.Compare(Versioning.Parse(x, true), Versioning.Parse(y, true))))
+                .Take(5);
+            foreach (string tag in newestFirst)
+            {
+                string escaped = Uri.EscapeDataString(tag);
+                var release = new Release
+                {
+                    Tag = tag,
+                    Notes = notesByTag.TryGetValue(tag, out string notes) ? notes : null,
+                    HtmlUrl = site + "/releases/tag/" + escaped,
+                    ExeUrl = site + "/releases/download/" + escaped + "/" + AppInfo.AssetName,
+                    SumsUrl = site + "/releases/download/" + escaped + "/SHA256SUMS.txt",
+                };
+                string sums;
+                try { sums = await GetAsync(release.SumsUrl, null).ConfigureAwait(false); }
+                catch (HttpRequestException) { continue; } // no files (yet) for this tag
+                string hex = ChecksumFor(sums);
+                if (hex == null) continue;
+                release.ExeDigest = "sha256:" + hex;
+                return release;
+            }
+            return null;
+        }
+
+        static string ChecksumFor(string sums) =>
+            sums.Split('\n').Select(l => l.Trim().Split(new[] { ' ', '*' }, StringSplitOptions.RemoveEmptyEntries))
+                .Where(p => p.Length == 2 && p[1] == AppInfo.AssetName).Select(p => p[0].ToLowerInvariant()).FirstOrDefault();
 
         internal static string GetForTest(string url) => GetAsync(url, null).GetAwaiter().GetResult();
 
@@ -192,8 +218,7 @@ namespace ClaudeAutoPass
             {
                 RequireRepoUrl(release.SumsUrl);
                 string sums = await Http.GetStringAsync(release.SumsUrl).ConfigureAwait(false);
-                expected = sums.Split('\n').Select(l => l.Trim().Split(new[] { ' ', '*' }, StringSplitOptions.RemoveEmptyEntries))
-                    .Where(p => p.Length == 2 && p[1] == AppInfo.AssetName).Select(p => p[0].ToLowerInvariant()).FirstOrDefault();
+                expected = ChecksumFor(sums);
             }
             if (expected == null) throw new InvalidDataException("缺少 SHA-256 校验值 / Missing SHA-256 checksum");
 
