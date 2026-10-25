@@ -24,6 +24,7 @@ namespace ClaudeAutoPass
             if (args.Length >= 4 && args[0] == "--self-test-process") return SelfTest.Process(args[1], int.Parse(args[2]), args[3], args.Length >= 5 && args[4] == "--hide");
             if (args.Length >= 2 && args[0] == "--self-test-taskbar") return SelfTest.Taskbar(args[1]);
             if (args.Length >= 3 && args[0] == "--self-test-hider") return SelfTest.Hider(args[1], args[2]);
+            if (args.Length >= 2 && args[0] == "--self-test-update") return SelfTest.Update(args[1]);
             if (args.Length >= 4 && args[0] == "--self-test-steam") return SelfTest.Steam(args[1], int.Parse(args[2]), args[3]);
 
             bool updated = args.Contains("--updated");
@@ -249,6 +250,34 @@ namespace ClaudeAutoPass
                 log = $"pressed=\"{label}\" via={via} frontScans={fronts} after={watch.Elapsed.TotalSeconds:F1}s\n" + string.Join("\n", notes.Distinct()) + "\n\n" + scanner.Diagnose();
             });
             File.WriteAllText(output, log);
+            return code;
+        }
+
+        /// <summary>Finds the newest Windows release through the website (no API rate limit) and checks its checksum file downloads.</summary>
+        public static int Update(string output)
+        {
+            var log = new System.Text.StringBuilder();
+            int code = 1;
+            try
+            {
+                Release web = Updater.NewestFromWebsiteAsync().GetAwaiter().GetResult();
+                log.AppendLine($"website: tag={web?.Tag} exe={web?.ExeUrl}");
+                log.AppendLine("notes: " + (web?.Notes ?? "").Replace("\n", " | "));
+                string sums = null;
+                if (web != null)
+                {
+                    sums = Updater.GetForTest(web.SumsUrl);
+                    log.AppendLine("sums: " + sums.Trim());
+                }
+                Release api = null;
+                try { api = Updater.NewestFromApiAsync().GetAwaiter().GetResult(); log.AppendLine($"api: tag={api?.Tag}"); }
+                catch (Exception ex) { log.AppendLine("api failed (allowed): " + ex.Message); }
+                bool ok = web != null && Versioning.Parse(web.Tag, true) != null && sums != null && sums.Contains(AppInfo.AssetName)
+                    && !string.IsNullOrEmpty(web.Notes) && (api == null || api.Tag == web.Tag);
+                code = ok ? 0 : 1;
+            }
+            catch (Exception ex) { log.AppendLine("error: " + ex); }
+            File.WriteAllText(output, log.ToString());
             return code;
         }
 

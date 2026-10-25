@@ -39,12 +39,53 @@ namespace ClaudeAutoPass
         /// <summary>Newest Windows release, or null when none is newer than this build.</summary>
         public static async Task<Release> CheckAsync()
         {
+            Release best;
+            try { best = await NewestFromApiAsync().ConfigureAwait(false); }
+            catch (Exception apiError) when (apiError is HttpRequestException || apiError is TaskCanceledException)
+            {
+                // GitHub allows 60 anonymous API calls an hour per IP address, shared by everyone behind the same proxy or
+                // VPN exit, so "403 rate limit exceeded" is common. The website's release feed and tag list have no such limit.
+                try { best = await NewestFromWebsiteAsync().ConfigureAwait(false); }
+                catch (Exception webError) when (webError is HttpRequestException || webError is TaskCanceledException || webError is System.Xml.XmlException)
+                {
+                    throw new HttpRequestException($"GitHub 接口：{apiError.Message}；网页：{webError.Message}");
+                }
+            }
+            return best != null && Versioning.IsNewer(best.Tag, AppInfo.Version) ? best : null;
+        }
+
+        static async Task<string> GetAsync(string url, string accept)
+        {
+            using (var request = new HttpRequestMessage(HttpMethod.Get, url))
+            {
+                if (accept != null)
+                {
+                    request.Headers.Accept.Clear();
+                    request.Headers.Accept.ParseAdd(accept);
+                }
+                using (HttpResponseMessage response = await Http.SendAsync(request).ConfigureAwait(false))
+                {
+                    string body = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
+                    if (!response.IsSuccessStatusCode)
+                    {
+                        string reason = response.ReasonPhrase;
+                        if ((int)response.StatusCode == 403 && body.IndexOf("rate limit", StringComparison.OrdinalIgnoreCase) >= 0) reason = "rate limit exceeded";
+                        throw new HttpRequestException($"{(int)response.StatusCode} ({reason})");
+                    }
+                    return body;
+                }
+            }
+        }
+
+        /// <summary>Newest Windows release from the GitHub API (has the exe's SHA-256), or null.</summary>
+        internal static async Task<Release> NewestFromApiAsync()
+        {
             // Android and Windows releases share the list, so read every page instead of trusting the first one.
             var serializer = new JavaScriptSerializer { MaxJsonLength = 16 * 1024 * 1024 };
             var releases = new List<Dictionary<string, object>>();
             for (int page = 1; page <= 20; page++)
             {
-                string json = await Http.GetStringAsync("https://api.github.com/repos/" + AppInfo.Repo + "/releases?per_page=100&page=" + page).ConfigureAwait(false);
+                string json = await GetAsync("https://api.github.com/repos/" + AppInfo.Repo + "/releases?per_page=100&page=" + page, null).ConfigureAwait(false);
                 List<Dictionary<string, object>> batch = serializer.Deserialize<ArrayList>(json).OfType<Dictionary<string, object>>().ToList();
                 releases.AddRange(batch);
                 if (batch.Count < 100) break;
@@ -71,7 +112,63 @@ namespace ClaudeAutoPass
                 best = release;
                 bestVersion = version;
             }
-            return best != null && Versioning.IsNewer(best.Tag, AppInfo.Version) ? best : null;
+            return best;
+        }
+
+        /// <summary>
+        /// Newest Windows release from the website instead of the API: the release feed (newest 10 releases, with notes),
+        /// or, if no Windows release is among them, the repository's tag list. The exe is checked against SHA256SUMS.txt.
+        /// </summary>
+        internal static async Task<Release> NewestFromWebsiteAsync()
+        {
+            string site = "https://github.com/" + AppInfo.Repo;
+            Release best = null;
+            int[] bestVersion = null;
+            void Consider(string tag, string notes)
+            {
+                int[] version = Versioning.Parse(tag, true);
+                if (version == null || (bestVersion != null && Versioning.Compare(version, bestVersion) <= 0)) return;
+                string escaped = Uri.EscapeDataString(tag);
+                best = new Release
+                {
+                    Tag = tag,
+                    Notes = notes,
+                    HtmlUrl = site + "/releases/tag/" + escaped,
+                    ExeUrl = site + "/releases/download/" + escaped + "/" + AppInfo.AssetName,
+                    SumsUrl = site + "/releases/download/" + escaped + "/SHA256SUMS.txt",
+                };
+                bestVersion = version;
+            }
+
+            string feed = await GetAsync(site + "/releases.atom", "application/atom+xml").ConfigureAwait(false);
+            System.Xml.Linq.XNamespace atom = "http://www.w3.org/2005/Atom";
+            foreach (System.Xml.Linq.XElement entry in System.Xml.Linq.XDocument.Parse(feed).Root.Elements(atom + "entry"))
+            {
+                string link = (string)entry.Element(atom + "link")?.Attribute("href") ?? "";
+                int at = link.LastIndexOf("/releases/tag/", StringComparison.Ordinal);
+                if (at < 0) continue;
+                Consider(Uri.UnescapeDataString(link.Substring(at + "/releases/tag/".Length)), HtmlToText((string)entry.Element(atom + "content") ?? ""));
+            }
+            if (best != null) return best;
+
+            // Smart-HTTP ref advertisement: lines like "<sha> refs/tags/win-v1.2.3-t1".
+            string refs = await GetAsync(site + ".git/info/refs?service=git-upload-pack", null).ConfigureAwait(false);
+            foreach (System.Text.RegularExpressions.Match m in System.Text.RegularExpressions.Regex.Matches(refs, @"refs/tags/(win-v[0-9.]+-t[0-9]+)(?![0-9^])"))
+                Consider(m.Groups[1].Value, null);
+            return best;
+        }
+
+        internal static string GetForTest(string url) => GetAsync(url, null).GetAwaiter().GetResult();
+
+        /// <summary>Plain text from the feed's HTML release notes.</summary>
+        internal static string HtmlToText(string html)
+        {
+            string text = System.Text.RegularExpressions.Regex.Replace(html, @"<li[^>]*>", "- ", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+            text = System.Text.RegularExpressions.Regex.Replace(text, @"<br\s*/?>|</(p|li|h[1-6]|ul|ol|div)>", "\n", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+            text = System.Text.RegularExpressions.Regex.Replace(text, "<[^>]+>", "");
+            text = WebUtility.HtmlDecode(text);
+            text = System.Text.RegularExpressions.Regex.Replace(text, @"[ \t]+\n", "\n");
+            return System.Text.RegularExpressions.Regex.Replace(text, @"\n{3,}", "\n\n").Trim();
         }
 
         static bool True(Dictionary<string, object> d, string key) => d.TryGetValue(key, out object v) && v is bool b && b;
