@@ -4,11 +4,11 @@
 
 ### 中文
 
-- 修复「检查更新失败：403 (rate limit exceeded)」：GitHub 接口对没登录的访问每个 IP 每小时只给 60 次，用代理或 VPN 时同一出口的人共用这个额度，很容易用完。现在接口被限流时改从 GitHub 网页读发布列表（没有这个限制），下载的 exe 照样用 SHA256SUMS.txt 校验。
+- 修复「检查更新失败：403 (rate limit exceeded)」：GitHub 接口对没登录的访问每个 IP 每小时只给 60 次，用代理或 VPN 时同一出口的人共用这个额度，很容易用完。现在改为先从 GitHub 网页读发布列表（没有这个限制），网页读不到才用接口；下载的 exe 照样用 SHA256SUMS.txt 校验。
 
 ### English
 
-- Fixes “Check for updates failed: 403 (rate limit exceeded)”: GitHub's API allows 60 anonymous calls an hour per IP address, shared by everyone behind the same proxy or VPN exit, so it runs out easily. When the API refuses, the release list is now read from the GitHub website instead (no such limit), and the downloaded exe is still checked against SHA256SUMS.txt.
+- Fixes “Check for updates failed: 403 (rate limit exceeded)”: GitHub's API allows 60 anonymous calls an hour per IP address, shared by everyone behind the same proxy or VPN exit, so it runs out easily. The release list is now read from the GitHub website first (no such limit), with the API only as a fallback; the downloaded exe is still checked against SHA256SUMS.txt.
 
 ## 1.2.3
 

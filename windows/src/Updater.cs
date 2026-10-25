@@ -39,16 +39,17 @@ namespace ClaudeAutoPass
         /// <summary>Newest Windows release, or null when none is newer than this build.</summary>
         public static async Task<Release> CheckAsync()
         {
+            // The website's release feed and tag list first: GitHub's API allows only 60 anonymous calls an hour per IP
+            // address, shared by everyone behind the same proxy or VPN exit, so "403 rate limit exceeded" is common.
+            // The API is the fallback, in case the website's feed is ever unavailable.
             Release best;
-            try { best = await NewestFromApiAsync().ConfigureAwait(false); }
-            catch (Exception apiError) when (apiError is HttpRequestException || apiError is TaskCanceledException)
+            try { best = await NewestFromWebsiteAsync().ConfigureAwait(false); }
+            catch (Exception webError) when (webError is HttpRequestException || webError is TaskCanceledException || webError is System.Xml.XmlException)
             {
-                // GitHub allows 60 anonymous API calls an hour per IP address, shared by everyone behind the same proxy or
-                // VPN exit, so "403 rate limit exceeded" is common. The website's release feed and tag list have no such limit.
-                try { best = await NewestFromWebsiteAsync().ConfigureAwait(false); }
-                catch (Exception webError) when (webError is HttpRequestException || webError is TaskCanceledException || webError is System.Xml.XmlException)
+                try { best = await NewestFromApiAsync().ConfigureAwait(false); }
+                catch (Exception apiError) when (apiError is HttpRequestException || apiError is TaskCanceledException)
                 {
-                    throw new HttpRequestException($"GitHub 接口：{apiError.Message}；网页：{webError.Message}");
+                    throw new HttpRequestException($"网页：{webError.Message}；GitHub 接口：{apiError.Message}");
                 }
             }
             return best != null && Versioning.IsNewer(best.Tag, AppInfo.Version) ? best : null;
