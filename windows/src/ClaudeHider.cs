@@ -67,17 +67,23 @@ namespace ClaudeAutoPass
                     if (!w.Visible || Hidden.ContainsKey(w.Handle)) continue;
                     var original = new WINDOWPLACEMENT { length = Marshal.SizeOf(typeof(WINDOWPLACEMENT)) };
                     if (!GetWindowPlacement(w.Handle, ref original)) continue;
-                    RECT r = original.rcNormalPosition;
-                    var away = original;
-                    away.flags = 0;
-                    away.showCmd = ShowNoActivate; // also restores a minimized or maximized window, at the new place
-                    away.rcNormalPosition = new RECT { Left = left, Top = r.Top, Right = left + (r.Right - r.Left), Bottom = r.Bottom };
-                    if (!SetWindowPlacement(w.Handle, ref away)) continue;
+                    // Back to its normal size first (also from minimized or maximized), without activating it...
+                    var normal = original;
+                    normal.flags = 0;
+                    normal.showCmd = ShowNoActivate;
+                    if (!SetWindowPlacement(w.Handle, ref normal)) continue;
+                    // ...then past the right edge. SetWindowPlacement can't do that: Windows pulls a placement that would be
+                    // completely off-screen back onto a monitor (CI caught it), SetWindowPos doesn't.
                     // Last in line, so closing or minimizing another program doesn't hand the focus to the hidden Claude (that
                     // would count as switching to it and bring it back). Not for an always-on-top window: that would lose its
                     // topmost state for good.
-                    if ((GetWindowLong(w.Handle, ExStyle) & TopmostStyle) == 0)
-                        SetWindowPos(w.Handle, Bottom, 0, 0, 0, 0, NoSize | NoMove | NoActivate);
+                    GetWindowRect(w.Handle, out RECT r);
+                    bool topmost = (GetWindowLong(w.Handle, ExStyle) & TopmostStyle) != 0;
+                    if (!SetWindowPos(w.Handle, Bottom, left, r.Top, 0, 0, NoSize | NoActivate | (topmost ? NoZOrder : 0)))
+                    {
+                        SetWindowPlacement(w.Handle, ref original);
+                        continue;
+                    }
                     Hidden[w.Handle] = original;
                     count++;
                 }
@@ -201,7 +207,7 @@ namespace ClaudeAutoPass
         const int HideWindow = 0, ShowNormal = 1, ShowMinimized = 2, ShowMaximized = 3, ShowNoActivate = 4, ShowMinNoActive = 7;
         const int RestoreToMaximized = 2;
         static readonly IntPtr Bottom = new IntPtr(1);
-        const uint NoSize = 0x1, NoMove = 0x2, NoActivate = 0x10;
+        const uint NoSize = 0x1, NoZOrder = 0x4, NoActivate = 0x10;
         const int ExStyle = -20, TopmostStyle = 0x8;
         const uint EventForeground = 0x0003, EventMinimizeStart = 0x0016, OutOfContext = 0;
 
@@ -224,10 +230,11 @@ namespace ClaudeAutoPass
             var p = new WINDOWPLACEMENT { length = Marshal.SizeOf(typeof(WINDOWPLACEMENT)) };
             GetWindowPlacement(h, ref p);
             iconic = IsIconic(h);
-            onScreen = p.rcNormalPosition.Left < SystemInformation.VirtualScreen.Right;
+            GetWindowRect(h, out RECT r);
+            onScreen = (iconic ? p.rcNormalPosition.Left : r.Left) < SystemInformation.VirtualScreen.Right;
             bool tracked;
             lock (Gate) tracked = Hidden.ContainsKey(h);
-            return $"iconic={iconic} normalLeft={p.rcNormalPosition.Left} showCmd={p.showCmd} tracked={tracked} foreground={GetForegroundWindow() == h}";
+            return $"iconic={iconic} left={r.Left} normalLeft={p.rcNormalPosition.Left} showCmd={p.showCmd} tracked={tracked} foreground={GetForegroundWindow() == h}";
         }
 
         [DllImport("user32.dll")] static extern bool GetWindowPlacement(IntPtr hwnd, ref WINDOWPLACEMENT placement);
@@ -235,6 +242,7 @@ namespace ClaudeAutoPass
         [DllImport("user32.dll")] static extern IntPtr GetForegroundWindow();
         [DllImport("user32.dll")] static extern bool SetForegroundWindow(IntPtr hwnd);
         [DllImport("user32.dll")] static extern bool IsWindow(IntPtr hwnd);
+        [DllImport("user32.dll")] static extern bool GetWindowRect(IntPtr hwnd, out RECT rect);
         [DllImport("user32.dll")] static extern int GetWindowLong(IntPtr hwnd, int index);
         [DllImport("user32.dll")] static extern bool SetWindowPos(IntPtr hwnd, IntPtr after, int x, int y, int cx, int cy, uint flags);
         [DllImport("user32.dll")] static extern bool IsIconic(IntPtr hwnd);
