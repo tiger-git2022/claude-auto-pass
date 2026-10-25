@@ -21,7 +21,8 @@ namespace ClaudeAutoPass
         static Func<bool> enabled;
         static Action<string> log;
         static bool chromiumOnly;
-        static DateTime lastRestore, lastMinimize;
+        static DateTime lastRestore, lastMinimize, pendingAt = DateTime.MinValue;
+        static System.Windows.Forms.Timer decideTimer;
 
         public static bool Running => Hooks.Count > 0;
 
@@ -32,6 +33,8 @@ namespace ClaudeAutoPass
             log = logNote;
             isClaudePid = claudePid ?? IsClaudeProcess;
             chromiumOnly = chromiumWindowsOnly;
+            decideTimer = new System.Windows.Forms.Timer { Interval = 400 };
+            decideTimer.Tick += (s, e) => Decide();
             foreach (uint[] range in new[] { new[] { EventForeground, EventForeground }, new[] { EventMinimizeStart, EventMinimizeEnd }, new[] { EventShow, EventShow } })
             {
                 IntPtr hook = SetWinEventHook(range[0], range[1], IntPtr.Zero, Callback, 0, 0, OutOfContext);
@@ -43,6 +46,8 @@ namespace ClaudeAutoPass
         {
             foreach (IntPtr hook in Hooks) UnhookWinEvent(hook);
             Hooks.Clear();
+            decideTimer?.Dispose();
+            decideTimer = null;
         }
 
         static bool IsClaudeProcess(int pid)
@@ -73,8 +78,28 @@ namespace ClaudeAutoPass
                 if (ev == EventMinimizeStart) { lastMinimize = DateTime.UtcNow; return; }
                 if (ev == EventMinimizeEnd) return;
                 if (enabled == null || !enabled() || main == IntPtr.Zero) return;
-                // Just minimized (a click on the button of the active Claude may also open the quick entry), or just restored.
-                if ((DateTime.UtcNow - lastMinimize).TotalSeconds < 1.5 || (DateTime.UtcNow - lastRestore).TotalSeconds < 1) return;
+                // Decide a moment later: minimizing a window also activates or shows it, and those events can arrive before
+                // the minimize event itself.
+                if (pendingAt == DateTime.MinValue) pendingAt = DateTime.UtcNow;
+                decideTimer?.Stop();
+                decideTimer?.Start();
+            }
+            catch (Exception ex) { log?.Invoke("单击任务栏打开 Claude 出错 / taskbar error: " + ex.Message); }
+        }
+
+        static void Decide()
+        {
+            decideTimer?.Stop();
+            DateTime at = pendingAt;
+            pendingAt = DateTime.MinValue;
+            try
+            {
+                if (enabled == null || !enabled()) return;
+                IntPtr main = MinimizedMainWindow();
+                if (main == IntPtr.Zero) return;
+                // Not when Claude was minimized just before (or after): that event came from minimizing, e.g. a click on the
+                // button of the active Claude, which may also open the quick entry. Nor right after a restore.
+                if (Math.Abs((at - lastMinimize).TotalSeconds) < 1.5 || (DateTime.UtcNow - lastRestore).TotalSeconds < 1) return;
                 lastRestore = DateTime.UtcNow;
                 Bring(main);
                 log?.Invoke($"单击任务栏：已打开 Claude 主窗口 / opened Claude's main window: {Describe(main)}");
