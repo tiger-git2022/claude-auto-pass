@@ -234,14 +234,19 @@ namespace ClaudeAutoPass
                 var scanner = new SteamGateScanner(name => string.Equals(name, processName, StringComparison.OrdinalIgnoreCase));
                 var notes = new System.Collections.Generic.List<string>();
                 var watch = Stopwatch.StartNew();
-                string label = null;
+                string label = null, via = null;
+                int fronts = 0;
                 while (watch.Elapsed.TotalSeconds < seconds && label == null)
                 {
-                    label = scanner.ScanOnce(notes);
-                    if (label == null) Thread.Sleep(500);
+                    // The tray app's way first (only the window in front); the whole-desktop scan if the page isn't in front.
+                    label = scanner.ScanIfDue(notes, out bool scanned);
+                    if (scanned) fronts++;
+                    if (label != null) { via = "front"; break; }
+                    if (!scanned) { label = scanner.ScanOnce(notes); if (label != null) via = "all"; }
+                    if (label == null) Thread.Sleep(300);
                 }
                 code = label != null ? 0 : 1;
-                log = $"pressed=\"{label}\" after={watch.Elapsed.TotalSeconds:F1}s\n" + string.Join("\n", notes.Distinct()) + "\n\n" + scanner.Diagnose();
+                log = $"pressed=\"{label}\" via={via} frontScans={fronts} after={watch.Elapsed.TotalSeconds:F1}s\n" + string.Join("\n", notes.Distinct()) + "\n\n" + scanner.Diagnose();
             });
             File.WriteAllText(output, log);
             return code;

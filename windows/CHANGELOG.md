@@ -8,6 +8,8 @@
 - 最小化或关掉后马上点也能打开：之前刚最小化 1.5 秒内的单击会被忽略（作者日志里第一次单击就是这样漏掉的），现在缩短到 0.6 秒；判断也更快，快速输入框只会闪一下。
 - 修复「藏到屏幕外」刚藏就被拿回来：藏的时候 Claude 往往还是当前窗口，旧的扫描检查会把这当成「切到了 Claude」。现在只看真正的窗口切换。
 - 扫描日志也会记下 Claude 主窗口被隐藏的事件，方便继续排查。
+- Steam 年龄确认按得更快、电脑更不卡：之前每次确认要把整个页面读三遍（作者日志里每次 1.1 到 1.3 秒），而且一直在扫所有 Steam 和浏览器窗口，让它们忙个不停。现在只扫前台窗口，页面刚切换的 8 秒里连续扫，之后每 2.5 秒才扫一次；确认「取消」和 18+ 文字时只看按钮附近的小框，不再读整页。扫描超过 3 秒会记进扫描日志。
+- 「单击任务栏打开 Claude 主窗口」占用更少：窗口显示、隐藏的事件只监听 Claude 自己的进程（之前是所有程序），检测 Claude 被再次启动也只在主窗口关着的时候才做。
 
 ### English
 
@@ -15,6 +17,8 @@
 - A click right after minimizing or closing works too: clicks within 1.5 s of minimizing were ignored (the owner's first click was missed that way); now 0.6 s, and the decision is quicker so the quick entry only flashes.
 - Fixes “Hide Claude off-screen” coming straight back: Claude is usually still the active window when hidden, and the old scan-loop check took that as switching to it. Only real window switches count now.
 - The scan log also records Claude's main window being hidden, for further troubleshooting.
+- The Steam age gate is confirmed faster and the PC stays smoother: each confirmation read the whole page three times (1.1 to 1.3 s per press in the owner's log), and every Steam and browser window was scanned all the time, keeping them busy. Now only the window in front is scanned, continuously for 8 s after its page changes and every 2.5 s after that; “取消” and the 18+ text are looked for in small boxes around the button instead of the whole page. Scans taking 3 s or more go to the scan log.
+- “Click the taskbar to open Claude's main window” costs less: window show and hide events are watched only in Claude's own processes (all programs before), and Claude being launched again is only watched for while its main window is closed.
 
 ## 1.2.2
 

@@ -47,17 +47,55 @@ namespace ClaudeAutoPass
                 launchTimer.Tick += (s, e) => WatchLaunches();
                 launchTimer.Start();
             }
-            foreach (uint[] range in new[] { new[] { EventForeground, EventForeground }, new[] { EventMinimizeStart, EventMinimizeEnd }, new[] { EventShow, EventHide } })
+            // Activation and minimizing are rare, so those are watched everywhere. Windows being shown or hidden is very common
+            // (every app, all the time), so that is watched only in Claude's own processes: a system-wide hook for it made
+            // every program report each such change to this tool.
+            foreach (uint[] range in new[] { new[] { EventForeground, EventForeground }, new[] { EventMinimizeStart, EventMinimizeEnd } })
             {
                 IntPtr hook = SetWinEventHook(range[0], range[1], IntPtr.Zero, Callback, 0, 0, OutOfContext);
                 if (hook != IntPtr.Zero) Hooks.Add(hook);
             }
+            hookTimer = new System.Windows.Forms.Timer { Interval = 1000 };
+            hookTimer.Tick += (s, e) => RefreshShowHooks();
+            hookTimer.Start();
+            RefreshShowHooks();
+        }
+
+        static readonly Dictionary<int, IntPtr> ShowHooks = new Dictionary<int, IntPtr>();
+        static System.Windows.Forms.Timer hookTimer;
+
+        /// <summary>Keeps one show/hide hook per Claude process that has titled top-level windows.</summary>
+        static void RefreshShowHooks()
+        {
+            try
+            {
+                var owners = new HashSet<int>();
+                EnumWindows((h, _) =>
+                {
+                    GetWindowThreadProcessId(h, out uint pid);
+                    if (GetWindowTextLength(h) > 0 && IsClaude((int)pid)) owners.Add((int)pid);
+                    return true;
+                }, IntPtr.Zero);
+                foreach (int pid in new List<int>(ShowHooks.Keys))
+                    if (!owners.Contains(pid)) { UnhookWinEvent(ShowHooks[pid]); ShowHooks.Remove(pid); }
+                foreach (int pid in owners)
+                {
+                    if (ShowHooks.ContainsKey(pid)) continue;
+                    IntPtr hook = SetWinEventHook(EventShow, EventHide, IntPtr.Zero, Callback, (uint)pid, 0, OutOfContext);
+                    if (hook != IntPtr.Zero) ShowHooks[pid] = hook;
+                }
+            }
+            catch (Exception ex) { log?.Invoke("单击任务栏打开 Claude 出错 / hook error: " + ex.Message); }
         }
 
         public static void Stop()
         {
             foreach (IntPtr hook in Hooks) UnhookWinEvent(hook);
             Hooks.Clear();
+            foreach (IntPtr hook in ShowHooks.Values) UnhookWinEvent(hook);
+            ShowHooks.Clear();
+            hookTimer?.Dispose();
+            hookTimer = null;
             decideTimer?.Dispose();
             decideTimer = null;
             launchTimer?.Dispose();
@@ -138,6 +176,8 @@ namespace ClaudeAutoPass
         {
             try
             {
+                // Only while the main window is closed; start counting afresh each time it closes.
+                if (enabled == null || !enabled() || ClosedMainWindow() == IntPtr.Zero) { knownMainPids = null; return; }
                 var now = new HashSet<int>();
                 foreach (Process p in Process.GetProcesses())
                 {

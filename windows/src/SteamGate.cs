@@ -19,13 +19,14 @@ namespace ClaudeAutoPass
         const int BoundingRectangleProperty = 30001;
         const int NameProperty = 30005;
         const int TextControlType = 50020;
+        const int DocumentControlType = 50030;
         const int ControlTypeProperty = 30003;
         const int InvokePattern = 10000;
         const int LegacyIAccessiblePattern = 10018;
         const int MaxTexts = 5000;
 
         readonly IUIAutomation uia;
-        readonly IUIAutomationCondition viewCondition, cancelCondition, textCondition;
+        readonly IUIAutomationCondition viewCondition, cancelCondition, textCondition, cancelOrTextCondition, documentCondition;
         readonly IUIAutomationCacheRequest cache;
         readonly IUIAutomationTreeWalker walker;
         readonly Func<string, bool> isTarget;
@@ -43,6 +44,8 @@ namespace ClaudeAutoPass
             cache.AddProperty(ControlTypeProperty);
             cache.AddProperty(BoundingRectangleProperty);
             textCondition = uia.CreatePropertyCondition(ControlTypeProperty, TextControlType);
+            cancelOrTextCondition = uia.CreateOrCondition(cancelCondition, textCondition);
+            documentCondition = uia.CreatePropertyCondition(ControlTypeProperty, DocumentControlType);
             walker = uia.ControlViewWalker;
             titleFilter = SteamRules.IsSteamPageTitle;
         }
@@ -87,33 +90,131 @@ namespace ClaudeAutoPass
         {
             foreach (Native.Window window in TargetWindows())
             {
-                IUIAutomationElement root;
-                try { root = uia.ElementFromHandle(window.Handle); }
-                catch (COMException) { continue; }
-                if (root == null) continue;
-                List<IUIAutomationElement> views = Find(root, viewCondition);
-                if (views.Count == 0) continue;
-                List<IUIAutomationElement> cancels = Find(root, cancelCondition);
-                List<IUIAutomationElement> texts = null;
-                foreach (IUIAutomationElement view in views)
-                {
-                    string label = Cached(view);
-                    if (!SteamRules.IsViewLabel(label)) continue;
-                    texts = texts ?? (cancels.Count > 0 ? Find(root, textCondition) : new List<IUIAutomationElement>());
-                    string why = WhyNotGate(view, cancels, texts);
-                    if (why != null)
-                    {
-                        notes?.Add($"Steam 未点：不像年龄提示 / not a gate \"{label}\" {why} \"{window.Title}\"");
-                        continue;
-                    }
-                    if (!act) return label;
-                    string how = Press(view);
-                    if (how.StartsWith("ok", StringComparison.Ordinal)) return label;
-                    notes?.Add($"Steam 未点：按下失败 / press failed \"{label}\" {how}");
-                }
+                string label = ScanWindow(window.Handle, window.Title, notes, act);
+                if (label != null) return label;
             }
             return null;
         }
+
+        sealed class Page
+        {
+            public string Signature;
+            public DateTime ChangedAt, ScannedAt, DocumentTriedAt;
+            public IUIAutomationElement Document;
+        }
+
+        readonly Dictionary<IntPtr, Page> pages = new Dictionary<IntPtr, Page>();
+        readonly Dictionary<int, string> processNames = new Dictionary<int, string>();
+
+        /// <summary>Scan in full this long after the page changed, then only now and then (each scan makes the page work).</summary>
+        const double BurstSeconds = 8, IdleScanSeconds = 2.5;
+
+        /// <summary>
+        /// For the tray app: scans only the window in front (the gate appears when the owner opens an item), in full right after
+        /// its page changed (title or page name) and only every few seconds otherwise, so Steam and the browser are not kept
+        /// busy answering UI Automation all the time. Returns the pressed label, or null; scanned says whether it scanned.
+        /// </summary>
+        public string ScanIfDue(List<string> notes, out bool scanned)
+        {
+            scanned = false;
+            IntPtr front = GetForegroundWindow();
+            if (front == IntPtr.Zero || Native.IsIconic(front)) return null;
+            GetWindowThreadProcessId(front, out uint pid);
+            string process = ProcessName((int)pid);
+            if (process == null || !isTarget(process)) return null;
+            var title = new StringBuilder(512);
+            GetWindowText(front, title, title.Capacity);
+            if (SteamRules.IsBrowserProcess(process) && !titleFilter(title.ToString())) return null;
+
+            if (!pages.TryGetValue(front, out Page page))
+            {
+                if (pages.Count > 50) pages.Clear();
+                pages[front] = page = new Page { ChangedAt = DateTime.UtcNow };
+            }
+            DateTime now = DateTime.UtcNow;
+            string signature = title + "|" + DocumentName(front, page, now);
+            if (signature != page.Signature) { page.Signature = signature; page.ChangedAt = now; }
+            if ((now - page.ChangedAt).TotalSeconds >= BurstSeconds && (now - page.ScannedAt).TotalSeconds < IdleScanSeconds) return null;
+            page.ScannedAt = now;
+            scanned = true;
+            return ScanWindow(front, title.ToString(), notes, true);
+        }
+
+        string ProcessName(int pid)
+        {
+            if (processNames.TryGetValue(pid, out string name)) return name;
+            if (processNames.Count > 500) processNames.Clear(); // process ids get reused
+            try { using (Process p = Process.GetProcessById(pid)) name = p.ProcessName; }
+            catch (Exception) { name = null; }
+            return processNames[pid] = name;
+        }
+
+        /// <summary>The page's name (its title), read from the page element found once per window: one cheap call per tick.</summary>
+        string DocumentName(IntPtr window, Page page, DateTime now)
+        {
+            if (page.Document != null)
+            {
+                try { return page.Document.CurrentName ?? ""; }
+                catch (COMException) { page.Document = null; } // navigated away: that page is gone
+            }
+            if ((now - page.DocumentTriedAt).TotalSeconds < 2) return "";
+            page.DocumentTriedAt = now;
+            try
+            {
+                IUIAutomationElement root = uia.ElementFromHandle(window);
+                page.Document = root?.FindFirst(TreeScope.TreeScope_Descendants, documentCondition);
+                return page.Document?.CurrentName ?? "";
+            }
+            catch (COMException) { return ""; }
+        }
+
+        string ScanWindow(IntPtr handle, string title, List<string> notes, bool act)
+        {
+            IUIAutomationElement root;
+            try { root = uia.ElementFromHandle(handle); }
+            catch (COMException) { return null; }
+            if (root == null) return null;
+            List<IUIAutomationElement> views = Find(root, viewCondition);
+            foreach (IUIAutomationElement view in views)
+            {
+                string label = Cached(view);
+                if (!SteamRules.IsViewLabel(label)) continue;
+                string why = WhyNotGate(view, root);
+                if (why != null)
+                {
+                    notes?.Add($"Steam 未点：不像年龄提示 / not a gate \"{label}\" {why} \"{title}\"");
+                    continue;
+                }
+                if (!act) return label;
+                string how = Press(view);
+                if (how.StartsWith("ok", StringComparison.Ordinal)) return label;
+                notes?.Add($"Steam 未点：按下失败 / press failed \"{label}\" {how}");
+            }
+            return null;
+        }
+
+        /// <summary>
+        /// Looks for "取消" and the 18+ text in ever larger boxes around the button (its parents) instead of the whole page:
+        /// the gate is a small dialog, and searching the whole page twice more made each press take over a second.
+        /// </summary>
+        string WhyNotGate(IUIAutomationElement view, IUIAutomationElement root)
+        {
+            string why = "隐藏 / hidden";
+            IUIAutomationElement current = view;
+            for (int level = 0; level < MaxGateLevels; level++)
+            {
+                try { current = walker.GetParentElement(current); }
+                catch (COMException) { break; }
+                if (current == null) break;
+                List<IUIAutomationElement> found = Find(current, cancelOrTextCondition);
+                why = WhyNotGate(view, found.Where(e => SteamRules.IsCancelLabel(Cached(e))).ToList(), found);
+                if (why == null) return null;
+                if (uia.CompareElements(current, root) != 0) break;
+            }
+            return why;
+        }
+
+        const int MaxGateLevels = 8;
 
         List<IUIAutomationElement> Find(IUIAutomationElement root, IUIAutomationCondition condition)
         {
@@ -238,5 +339,9 @@ namespace ClaudeAutoPass
             }
             return sb.ToString();
         }
+
+        [DllImport("user32.dll")] static extern IntPtr GetForegroundWindow();
+        [DllImport("user32.dll")] static extern uint GetWindowThreadProcessId(IntPtr hwnd, out uint pid);
+        [DllImport("user32.dll", CharSet = CharSet.Unicode)] static extern int GetWindowText(IntPtr hwnd, StringBuilder text, int max);
     }
 }
