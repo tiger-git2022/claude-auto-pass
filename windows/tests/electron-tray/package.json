@@ -1,0 +1,5 @@
+{
+  "name": "fake-claude",
+  "private": true,
+  "main": "main.js"
+}

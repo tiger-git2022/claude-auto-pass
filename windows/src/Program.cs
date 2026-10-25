@@ -23,6 +23,8 @@ namespace ClaudeAutoPass
             if (args.Length >= 2 && args[0] == "--self-test-menu") return SelfTest.Menu(args[1]);
             if (args.Length >= 4 && args[0] == "--self-test-process") return SelfTest.Process(args[1], int.Parse(args[2]), args[3], args.Length >= 5 && args[4] == "--hide");
             if (args.Length >= 2 && args[0] == "--self-test-taskbar") return SelfTest.Taskbar(args[1]);
+            if (args.Length >= 4 && args[0] == "--self-test-taskbar-process")
+                return SelfTest.TaskbarProcess(args[1], int.Parse(args[2]), args[3], args.Length >= 5 && args[4] == "--no-tray-click");
             if (args.Length >= 3 && args[0] == "--self-test-hider") return SelfTest.Hider(args[1], args[2]);
             if (args.Length >= 2 && args[0] == "--self-test-update") return SelfTest.Update(args[1]);
             if (args.Length >= 4 && args[0] == "--self-test-steam") return SelfTest.Steam(args[1], int.Parse(args[2]), args[3]);
@@ -219,6 +221,28 @@ namespace ClaudeAutoPass
             Application.Run(main);
             File.WriteAllText(output, log.ToString());
             return code;
+        }
+
+        /// <summary>
+        /// "单击任务栏打开 Claude" watching another program (a stand-in Electron app in CI) for some seconds and noting what it
+        /// did. --no-tray-click shows a hidden window from outside instead of clicking the tray icon, to compare.
+        /// </summary>
+        public static int TaskbarProcess(string processName, int seconds, string output, bool noTrayClick)
+        {
+            var log = new System.Text.StringBuilder();
+            ClaudeTaskbar.UseTrayIcon = !noTrayClick;
+            var timer = new System.Windows.Forms.Timer { Interval = seconds * 1000 };
+            timer.Tick += (s, e) => { timer.Stop(); Application.ExitThread(); };
+            ClaudeTaskbar.Start(() => true, note => log.AppendLine($"{DateTime.Now:HH:mm:ss.f} {note}"), pid =>
+            {
+                try { using (var p = System.Diagnostics.Process.GetProcessById(pid)) return string.Equals(p.ProcessName, processName, StringComparison.OrdinalIgnoreCase); }
+                catch (Exception) { return false; }
+            });
+            timer.Start();
+            Application.Run();
+            ClaudeTaskbar.Stop();
+            File.WriteAllText(output, log.ToString());
+            return 0;
         }
 
         [System.Runtime.InteropServices.DllImport("user32.dll")] static extern bool PostMessage(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam);
