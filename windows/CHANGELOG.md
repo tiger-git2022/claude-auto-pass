@@ -4,13 +4,15 @@
 
 ### 中文
 
-- 「单击任务栏打开 Claude 主窗口」现在也能处理 Claude 主窗口被隐藏的情况（点 X 收到托盘）：作者电脑上的日志显示，单击没反应时 Claude 主窗口是隐藏的，不是最小化，1.2.2 只处理了最小化。现在主窗口隐藏时，Claude 弹出快速输入框、某个窗口被激活，或者被再次启动（点任务栏上固定的图标），都会把主窗口显示到前台。刚关掉 1.5 秒内不会触发。
+- 「单击任务栏打开 Claude 主窗口」现在也能处理 Claude 主窗口被隐藏的情况（点 X 收到托盘）：作者电脑上的日志显示，单击没反应时 Claude 主窗口是隐藏的，不是最小化，1.2.2 只处理了最小化。现在主窗口隐藏时，Claude 弹出快速输入框、某个窗口被激活，或者被再次启动（点任务栏上固定的图标），都会把主窗口显示到前台。
+- 最小化或关掉后马上点也能打开：之前刚最小化 1.5 秒内的单击会被忽略（作者日志里第一次单击就是这样漏掉的），现在缩短到 0.6 秒；判断也更快，快速输入框只会闪一下。
 - 修复「藏到屏幕外」刚藏就被拿回来：藏的时候 Claude 往往还是当前窗口，旧的扫描检查会把这当成「切到了 Claude」。现在只看真正的窗口切换。
 - 扫描日志也会记下 Claude 主窗口被隐藏的事件，方便继续排查。
 
 ### English
 
-- “Click the taskbar to open Claude's main window” now also handles a hidden main window (closed to the tray with X): the owner's log showed Claude's main window hidden, not minimized, when a click did nothing, and 1.2.2 only handled minimized. Now, while the main window is hidden, Claude showing its quick entry, activating one of its windows, or being launched again (its pinned taskbar icon) brings the main window to the front. Not within 1.5 s of closing it.
+- “Click the taskbar to open Claude's main window” now also handles a hidden main window (closed to the tray with X): the owner's log showed Claude's main window hidden, not minimized, when a click did nothing, and 1.2.2 only handled minimized. Now, while the main window is hidden, Claude showing its quick entry, activating one of its windows, or being launched again (its pinned taskbar icon) brings the main window to the front.
+- A click right after minimizing or closing works too: clicks within 1.5 s of minimizing were ignored (the owner's first click was missed that way); now 0.6 s, and the decision is quicker so the quick entry only flashes.
 - Fixes “Hide Claude off-screen” coming straight back: Claude is usually still the active window when hidden, and the old scan-loop check took that as switching to it. Only real window switches count now.
 - The scan log also records Claude's main window being hidden, for further troubleshooting.
 

@@ -55,7 +55,7 @@ namespace ClaudeAutoPass
 
             SystemEvents.SessionSwitch += OnSessionSwitch;
             ClaudeHider.Start(note => ScanLog.Write(note, false));
-            ClaudeTaskbar.Start(() => settings.TaskbarOpen, note => ScanLog.Write(note));
+            ClaudeTaskbar.Start(() => settings.TaskbarOpen, note => ScanLog.Write(note, false));
             worker = new Thread(ScanLoop) { IsBackground = true, Name = "scan" };
             worker.SetApartmentState(ApartmentState.MTA);
             worker.Start();

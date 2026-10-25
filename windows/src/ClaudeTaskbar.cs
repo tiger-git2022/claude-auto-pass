@@ -27,6 +27,8 @@ namespace ClaudeAutoPass
         static HashSet<int> knownMainPids;
         static string pendingReason;
 
+        const double GuardSeconds = 0.6;
+
         public static bool Running => Hooks.Count > 0;
 
         /// <summary>Call on a thread with a message loop.</summary>
@@ -36,7 +38,7 @@ namespace ClaudeAutoPass
             log = logNote;
             isClaudePid = claudePid ?? IsClaudeProcess;
             chromiumOnly = chromiumWindowsOnly;
-            decideTimer = new System.Windows.Forms.Timer { Interval = 400 };
+            decideTimer = new System.Windows.Forms.Timer { Interval = 150 }; // short, so the quick entry barely shows
             decideTimer.Tick += (s, e) => Decide();
             // Launching Claude again (its pinned taskbar icon when no window is shown) may show nothing at all: watch for it.
             if (claudePid == null)
@@ -121,7 +123,8 @@ namespace ClaudeAutoPass
                 if (main == IntPtr.Zero) return;
                 // Not when Claude was minimized or closed just before (or after): that event came from minimizing or closing,
                 // e.g. a click on the button of the active Claude, which may also open the quick entry. Nor right after a restore.
-                if (Math.Abs((at - lastMinimize).TotalSeconds) < 1.5 || Math.Abs((at - lastHide).TotalSeconds) < 1.5
+                // Short: the owner minimizes and clicks again within a second or two.
+                if (Math.Abs((at - lastMinimize).TotalSeconds) < GuardSeconds || Math.Abs((at - lastHide).TotalSeconds) < GuardSeconds
                     || (DateTime.UtcNow - lastRestore).TotalSeconds < 1) return;
                 lastRestore = DateTime.UtcNow;
                 Bring(main);

@@ -200,10 +200,10 @@ namespace ClaudeAutoPass
                         return opened;
                     }
                     bool click = await Case("click while minimized", 2500, true);
-                    bool justMinimized = await Case("right after minimizing", 300, true);
+                    bool justMinimized = await Case("right after minimizing", 150, true);
                     bool off = await Case("switched off", 2500, false);
                     bool hidden = await Case("click while closed to the tray", 2500, true, hide: true);
-                    bool justHidden = await Case("right after closing to the tray", 300, true, hide: true);
+                    bool justHidden = await Case("right after closing to the tray", 150, true, hide: true);
                     log.AppendLine($"click={click} justMinimized={justMinimized} off={off} hidden={hidden} justHidden={justHidden}");
                     code = click && !justMinimized && !off && hidden && !justHidden ? 0 : 1;
                 }
