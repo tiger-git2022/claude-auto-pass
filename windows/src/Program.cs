@@ -175,31 +175,37 @@ namespace ClaudeAutoPass
             int self = System.Diagnostics.Process.GetCurrentProcess().Id;
             bool enabled = true;
             var main = new Form { Text = "Claude", Width = 640, Height = 420, StartPosition = FormStartPosition.Manual, Location = new Point(80, 80) };
-            var quick = new Form { Text = "Quick entry", Width = 360, Height = 90, StartPosition = FormStartPosition.Manual, Location = new Point(400, 600), ShowInTaskbar = false };
+            // Like Claude's quick entry: always on top, not resizable.
+            var quick = new Form { Text = "Quick entry", Width = 360, Height = 90, StartPosition = FormStartPosition.Manual, Location = new Point(400, 600), ShowInTaskbar = false, TopMost = true, FormBorderStyle = FormBorderStyle.FixedSingle };
             ClaudeTaskbar.Start(() => enabled, note => log.AppendLine("  note: " + note), pid => pid == self, chromiumWindowsOnly: false);
             main.Shown += async (s, e) =>
             {
                 try
                 {
-                    async System.Threading.Tasks.Task<bool> Case(string name, int waitBeforeShow, bool on)
+                    // hide: closed to the tray (Claude's X), the window is hidden rather than minimized.
+                    async System.Threading.Tasks.Task<bool> Case(string name, int waitBeforeShow, bool on, bool hide = false)
                     {
                         enabled = on;
                         quick.Hide();
-                        main.WindowState = FormWindowState.Minimized;
+                        if (hide) ShowWindow(main.Handle, 0);
+                        else main.WindowState = FormWindowState.Minimized;
                         await System.Threading.Tasks.Task.Delay(waitBeforeShow);
                         quick.Show();
                         await System.Threading.Tasks.Task.Delay(1500);
-                        bool restored = main.WindowState != FormWindowState.Minimized;
-                        log.AppendLine($"{name}: restored={restored}");
+                        bool opened = IsWindowVisible(main.Handle) && main.WindowState != FormWindowState.Minimized;
+                        log.AppendLine($"{name}: opened={opened}");
+                        ShowWindow(main.Handle, 5);
                         main.WindowState = FormWindowState.Normal;
                         await System.Threading.Tasks.Task.Delay(1000);
-                        return restored;
+                        return opened;
                     }
                     bool click = await Case("click while minimized", 2500, true);
-                    bool justMinimized = await Case("right after minimizing", 300, true);
+                    bool justMinimized = await Case("right after minimizing", 150, true);
                     bool off = await Case("switched off", 2500, false);
-                    log.AppendLine($"click={click} justMinimized={justMinimized} off={off}");
-                    code = click && !justMinimized && !off ? 0 : 1;
+                    bool hidden = await Case("click while closed to the tray", 2500, true, hide: true);
+                    bool justHidden = await Case("right after closing to the tray", 150, true, hide: true);
+                    log.AppendLine($"click={click} justMinimized={justMinimized} off={off} hidden={hidden} justHidden={justHidden}");
+                    code = click && !justMinimized && !off && hidden && !justHidden ? 0 : 1;
                 }
                 catch (Exception ex) { log.AppendLine(ex.ToString()); }
                 finally
@@ -216,6 +222,7 @@ namespace ClaudeAutoPass
 
         [System.Runtime.InteropServices.DllImport("user32.dll")] static extern bool PostMessage(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam);
         [System.Runtime.InteropServices.DllImport("user32.dll")] static extern bool ShowWindow(IntPtr hwnd, int cmd);
+        [System.Runtime.InteropServices.DllImport("user32.dll")] static extern bool IsWindowVisible(IntPtr hwnd);
 
         /// <summary>Scans a browser showing a mock Steam Workshop gate until it presses "查看物品" (exit 0).</summary>
         public static int Steam(string processName, int seconds, string output)
@@ -227,14 +234,19 @@ namespace ClaudeAutoPass
                 var scanner = new SteamGateScanner(name => string.Equals(name, processName, StringComparison.OrdinalIgnoreCase));
                 var notes = new System.Collections.Generic.List<string>();
                 var watch = Stopwatch.StartNew();
-                string label = null;
+                string label = null, via = null;
+                int fronts = 0;
                 while (watch.Elapsed.TotalSeconds < seconds && label == null)
                 {
-                    label = scanner.ScanOnce(notes);
-                    if (label == null) Thread.Sleep(500);
+                    // The tray app's way first (only the window in front); the whole-desktop scan if the page isn't in front.
+                    label = scanner.ScanIfDue(notes, out bool scanned);
+                    if (scanned) fronts++;
+                    if (label != null) { via = "front"; break; }
+                    if (!scanned) { label = scanner.ScanOnce(notes); if (label != null) via = "all"; }
+                    if (label == null) Thread.Sleep(300);
                 }
                 code = label != null ? 0 : 1;
-                log = $"pressed=\"{label}\" after={watch.Elapsed.TotalSeconds:F1}s\n" + string.Join("\n", notes.Distinct()) + "\n\n" + scanner.Diagnose();
+                log = $"pressed=\"{label}\" via={via} frontScans={fronts} after={watch.Elapsed.TotalSeconds:F1}s\n" + string.Join("\n", notes.Distinct()) + "\n\n" + scanner.Diagnose();
             });
             File.WriteAllText(output, log);
             return code;

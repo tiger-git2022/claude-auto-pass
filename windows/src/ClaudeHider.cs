@@ -117,7 +117,9 @@ namespace ClaudeAutoPass
                 {
                     // Closed. A window Claude only hid (to its tray) stays tracked, so it still comes back on-screen.
                     if (!IsWindow(h)) { Hidden.Remove(h); continue; }
-                    if (h == foreground && settled)
+                    // Only as a fallback: with window events running, a switch to Claude is seen as it happens. Checking here would
+                    // also bring back a Claude that simply stayed the active window after hiding (seen on the owner's PC).
+                    if (Hooks.Count == 0 && h == foreground && settled)
                     {
                         Restore(h, true);
                         notes.Add("切到 Claude，已从屏幕外拿回 / brought Claude back from off-screen");
