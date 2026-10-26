@@ -342,7 +342,7 @@ namespace ClaudeAutoPass
 
         /// <summary>
         /// Waits for the tray menu and presses "Show App" (or the first enabled item); true when it pressed one or the main
-        /// window opened, false when the menu didn't appear or closed first (worth another try).
+        /// window opened, false when the menu didn't appear or closed before the press (worth another try).
         /// </summary>
         static bool PickShowApp(IntPtr main, uint pid, HashSet<IntPtr> before, out string note)
         {
@@ -378,13 +378,14 @@ namespace ClaudeAutoPass
                     if (pick == null && string.Equals(name, ShowAppLabel, StringComparison.OrdinalIgnoreCase)) pick = item;
                 }
                 pick = pick ?? first; // the label is translated in some languages; "Show App" is the menu's first item
-                if (pick == null) { note = "菜单里没有能点的项目 / no enabled item: " + string.Join(" / ", names); return true; }
+                if (pick == null) { note = "菜单里没有能点的项目 / no enabled item: " + string.Join(" / ", names); return false; }
                 string label = pick.CurrentName; // read before pressing: the menu closes
                 string pressed = Scanner.Press(pick);
                 for (int i = 0; i < 15 && !IsWindowVisible(main); i++) System.Threading.Thread.Sleep(100);
                 note = $"点了「{label}」({pressed})，主窗口{(IsWindowVisible(main) ? "已打开 / opened" : "没打开 / not opened")}，"
                     + $"{watch.ElapsedMilliseconds} ms；菜单 / menu: {string.Join(" / ", names)}";
-                return true;
+                // A menu closed just as it was pressed fails with a COM error: try again then.
+                return IsWindowVisible(main) || pressed.StartsWith("ok", StringComparison.Ordinal);
             }
             return false;
         }
