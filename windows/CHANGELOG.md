@@ -1,5 +1,17 @@
 # Windows 版更新记录 / Windows Changelog
 
+## 1.2.6
+
+### 中文
+
+- 修复 1.2.5「单击任务栏不弹出 Claude 主窗口」：Claude 的托盘图标左键单击打开的是快速输入框，不是主窗口（作者电脑上的日志和 Claude 3.6556 的代码都证实了），所以 1.2.5 替你单击托盘图标没用。现在改成右键 Claude 的托盘图标，再点菜单第一项「Show App」，和你手动从托盘菜单打开完全一样。托盘菜单会在右下角闪一下。
+- 扫描日志会记下点了菜单里哪一项、主窗口有没有打开。
+
+### English
+
+- Fixes 1.2.5 not opening Claude's main window on a taskbar click: a left click on Claude's tray icon opens its quick entry, not the main window (confirmed by the owner's log and Claude 3.6556's code). Now the tool right-clicks Claude's tray icon and picks the menu's first item, "Show App", exactly like opening it from the tray menu by hand. The tray menu flashes briefly in the corner.
+- The scan log notes which menu item was picked and whether the main window opened.
+
 ## 1.2.5
 
 ### 中文

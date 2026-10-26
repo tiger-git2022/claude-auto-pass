@@ -1,14 +1,16 @@
-// Stands in for Claude Desktop in CI: a main window that closes to the tray (hidden, like Claude's X), a tray icon whose
-// click shows it again, and an always-on-top "quick entry" that pops up later (what a taskbar click on Claude shows).
+// Stands in for Claude Desktop in CI, with its tray behavior (Claude 3.6556 on Windows): a main window that closes to the
+// tray (hidden, like Claude's X); a tray icon whose left click toggles the always-on-top quick entry and whose right click
+// pops up a menu starting with "Show App", which shows the main window. The quick entry also pops up by itself later
+// (what a taskbar click on Claude shows).
 // Writes whether the main window ended up shown, and whether its page knows it is visible (a window shown from outside
 // stays "hidden" inside Chromium, so it looks frozen).
-const { app, BrowserWindow, Tray, nativeImage } = require('electron');
+const { app, BrowserWindow, Menu, Tray, nativeImage } = require('electron');
 const fs = require('fs');
 
 const result = (process.argv.find(a => a.startsWith('--result=')) || '').slice('--result='.length);
 const events = [];
 const note = text => { events.push(`${(process.uptime()).toFixed(1)}s ${text}`); console.log(text); };
-let win, quick, tray, trayClicks = 0;
+let win, quick, tray, leftClicks = 0, menus = 0, showApp = 0;
 
 app.whenReady().then(() => {
   win = new BrowserWindow({ width: 640, height: 420, x: 80, y: 80, title: 'Claude' });
@@ -19,7 +21,13 @@ app.whenReady().then(() => {
   const icon = nativeImage.createFromDataURL('data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8DwHwAFBQIAX8jx0gAAAABJRU5ErkJggg==');
   tray = new Tray(icon.resize({ width: 16, height: 16 }));
   tray.setToolTip('Claude');
-  tray.on('click', () => { trayClicks++; note('tray clicked'); win.show(); win.focus(); });
+  const menu = Menu.buildFromTemplate([
+    { label: 'Show App', click: () => { showApp++; note('Show App'); win.show(); win.focus(); } },
+    { type: 'separator' },
+    { label: 'Exit', click: () => { note('Exit picked'); } },
+  ]);
+  tray.on('click', () => { leftClicks++; note('tray clicked'); quick.isVisible() ? quick.hide() : quick.show(); });
+  tray.on('right-click', () => { menus++; note('tray menu'); tray.popUpContextMenu(menu); });
   quick = new BrowserWindow({ width: 360, height: 90, x: 400, y: 600, title: 'Quick entry', show: false, frame: false,
     resizable: false, alwaysOnTop: true, skipTaskbar: true });
   quick.loadURL('data:text/html,<title>Quick entry</title><input>');
@@ -28,7 +36,7 @@ app.whenReady().then(() => {
   setTimeout(() => quick.show(), 9000);        // the taskbar click opens the quick entry
   setTimeout(async () => {
     const page = await win.webContents.executeJavaScript('document.visibilityState');
-    const out = { mainVisible: win.isVisible(), page, trayClicks, events };
+    const out = { mainVisible: win.isVisible(), page, leftClicks, menus, showApp, events };
     note(JSON.stringify(out));
     if (result) fs.writeFileSync(result, JSON.stringify(out, null, 1));
     app.quit();
