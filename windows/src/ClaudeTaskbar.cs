@@ -355,9 +355,10 @@ namespace ClaudeAutoPass
                 }
                 pick = pick ?? first; // the label is translated in some languages; "Show App" is the menu's first item
                 if (pick == null) return "菜单里没有能点的项目 / no enabled item: " + string.Join(" / ", names);
+                string label = pick.CurrentName; // read before pressing: the menu closes
                 string pressed = Scanner.Press(pick);
                 for (int i = 0; i < 15 && !IsWindowVisible(main); i++) System.Threading.Thread.Sleep(100);
-                return $"点了「{pick.CurrentName}」({pressed})，主窗口{(IsWindowVisible(main) ? "已打开 / opened" : "没打开 / not opened")}；菜单 / menu: {string.Join(" / ", names)}";
+                return $"点了「{label}」({pressed})，主窗口{(IsWindowVisible(main) ? "已打开 / opened" : "没打开 / not opened")}；菜单 / menu: {string.Join(" / ", names)}";
             }
             return seen;
         }
