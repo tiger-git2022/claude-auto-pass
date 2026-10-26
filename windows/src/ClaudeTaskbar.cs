@@ -307,41 +307,65 @@ namespace ClaudeAutoPass
             }
             if (hosts.Count == 0) return false;
             if (System.Threading.Interlocked.Exchange(ref menuBusy, 1) == 1) return true; // a menu is being picked already
-            HashSet<IntPtr> before = PopupWindows(pid);
-            AllowSetForegroundWindow(pid); // so Claude may bring its window to the front
-            foreach (IntPtr host in hosts)
-                for (int id = FirstTrayIconId; id <= LastTrayIconId; id++) // ids that match no icon are ignored
-                    PostMessage(host, TrayMessage, (IntPtr)id, (IntPtr)RightButtonDown);
             var thread = new System.Threading.Thread(() =>
             {
-                string note;
-                try { note = PickShowApp(main, pid, before); }
-                catch (Exception ex) { note = "出错 / error: " + ex.Message; }
+                var notes = new List<string>();
+                try
+                {
+                    // The quick entry Claude shows on a taskbar click closes itself when the menu takes the focus, and gives
+                    // the focus back to the window before it, which closes the menu too (owner's log on 1.2.6). The quick
+                    // entry is gone by then, so a second try stays open.
+                    for (int attempt = 1; attempt <= MenuAttempts; attempt++)
+                    {
+                        if (attempt > 1) System.Threading.Thread.Sleep(300);
+                        if (IsWindowVisible(main)) { notes.Add("主窗口已打开 / main window open"); break; }
+                        HashSet<IntPtr> before = PopupWindows(pid);
+                        AllowSetForegroundWindow(pid); // so Claude may bring its window to the front
+                        foreach (IntPtr host in hosts)
+                            for (int id = FirstTrayIconId; id <= LastTrayIconId; id++) // ids that match no icon are ignored
+                                PostMessage(host, TrayMessage, (IntPtr)id, (IntPtr)RightButtonDown);
+                        bool done = PickShowApp(main, pid, before, out string note);
+                        notes.Add($"第 {attempt} 次 / try {attempt}: {note}");
+                        if (done) break;
+                    }
+                }
+                catch (Exception ex) { notes.Add("出错 / error: " + ex.Message); }
                 finally { System.Threading.Interlocked.Exchange(ref menuBusy, 0); }
-                Note("单击任务栏（托盘菜单）/ tray menu: " + note);
+                Note("单击任务栏（托盘菜单）/ tray menu: " + string.Join("；", notes));
             }) { IsBackground = true, Name = "Claude tray menu" };
             thread.SetApartmentState(System.Threading.ApartmentState.MTA);
             thread.Start();
             return true;
         }
 
-        /// <summary>Waits for the tray menu, presses "Show App" (or the first enabled item) and says what happened.</summary>
-        static string PickShowApp(IntPtr main, uint pid, HashSet<IntPtr> before)
+        const int MenuAttempts = 3;
+
+        /// <summary>
+        /// Waits for the tray menu and presses "Show App" (or the first enabled item); true when it pressed one or the main
+        /// window opened, false when the menu didn't appear or closed first (worth another try).
+        /// </summary>
+        static bool PickShowApp(IntPtr main, uint pid, HashSet<IntPtr> before, out string note)
         {
             var watch = Stopwatch.StartNew();
             Interop.UIAutomationClient.IUIAutomation uia = null;
-            string seen = "菜单没出来 / no menu appeared";
-            while (watch.ElapsedMilliseconds < 3000)
+            IntPtr seenMenu = IntPtr.Zero;
+            note = "菜单没出来 / no menu appeared";
+            while (watch.ElapsedMilliseconds < 1500)
             {
-                System.Threading.Thread.Sleep(100);
-                if (IsWindowVisible(main)) return "主窗口已打开 / main window open";
+                System.Threading.Thread.Sleep(50);
+                if (IsWindowVisible(main)) { note = "主窗口已打开 / main window open"; return true; }
                 IntPtr menu = IntPtr.Zero;
                 foreach (IntPtr w in PopupWindows(pid)) if (!before.Contains(w)) { menu = w; break; }
-                if (menu == IntPtr.Zero) continue;
+                if (menu == IntPtr.Zero)
+                {
+                    if (seenMenu != IntPtr.Zero) { note = "菜单出来后被关掉了 / the menu closed"; return false; }
+                    continue;
+                }
+                seenMenu = menu;
                 uia = uia ?? Scanner.CreateAutomation();
                 var items = uia.ElementFromHandle(menu)?.FindAll(Interop.UIAutomationClient.TreeScope.TreeScope_Descendants,
                     uia.CreatePropertyCondition(ControlTypeProperty, MenuItemControlType));
-                if (items == null || items.Length == 0) { seen = "菜单里还没有项目 / menu has no items yet"; continue; }
+                if (items == null || items.Length == 0) { note = "菜单里还没有项目 / menu has no items yet"; continue; }
                 Interop.UIAutomationClient.IUIAutomationElement pick = null, first = null;
                 var names = new List<string>();
                 for (int i = 0; i < items.Length; i++)
@@ -354,13 +378,15 @@ namespace ClaudeAutoPass
                     if (pick == null && string.Equals(name, ShowAppLabel, StringComparison.OrdinalIgnoreCase)) pick = item;
                 }
                 pick = pick ?? first; // the label is translated in some languages; "Show App" is the menu's first item
-                if (pick == null) return "菜单里没有能点的项目 / no enabled item: " + string.Join(" / ", names);
+                if (pick == null) { note = "菜单里没有能点的项目 / no enabled item: " + string.Join(" / ", names); return true; }
                 string label = pick.CurrentName; // read before pressing: the menu closes
                 string pressed = Scanner.Press(pick);
                 for (int i = 0; i < 15 && !IsWindowVisible(main); i++) System.Threading.Thread.Sleep(100);
-                return $"点了「{label}」({pressed})，主窗口{(IsWindowVisible(main) ? "已打开 / opened" : "没打开 / not opened")}；菜单 / menu: {string.Join(" / ", names)}";
+                note = $"点了「{label}」({pressed})，主窗口{(IsWindowVisible(main) ? "已打开 / opened" : "没打开 / not opened")}，"
+                    + $"{watch.ElapsedMilliseconds} ms；菜单 / menu: {string.Join(" / ", names)}";
+                return true;
             }
-            return seen;
+            return false;
         }
 
         /// <summary>Visible, untitled tool windows of the process: Chromium's menus.</summary>
@@ -370,7 +396,7 @@ namespace ClaudeAutoPass
             EnumWindows((h, _) =>
             {
                 GetWindowThreadProcessId(h, out uint owner);
-                if (owner == pid && IsWindowVisible(h) && (GetWindowLong(h, ExStyle) & ToolWindow) != 0
+                if (owner == pid && IsWindowVisible(h) && GetWindowTextLength(h) == 0 && (GetWindowLong(h, ExStyle) & ToolWindow) != 0
                     && ClassOf(h).StartsWith("Chrome_WidgetWin", StringComparison.Ordinal))
                     found.Add(h);
                 return true;
