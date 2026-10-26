@@ -190,7 +190,7 @@ namespace ClaudeAutoPass
         }
 
         /// <summary>"ok ..." when pressed, otherwise why not.</summary>
-        static string Press(IUIAutomationElement element)
+        internal static string Press(IUIAutomationElement element)
         {
             try
             {

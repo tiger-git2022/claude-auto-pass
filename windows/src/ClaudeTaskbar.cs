@@ -36,6 +36,8 @@ namespace ClaudeAutoPass
         {
             enabled = isEnabled;
             log = logNote;
+            ui = System.Threading.SynchronizationContext.Current as System.Windows.Forms.WindowsFormsSynchronizationContext
+                ?? new System.Windows.Forms.WindowsFormsSynchronizationContext(); // posts back to this thread
             isClaudePid = claudePid ?? IsClaudeProcess;
             chromiumOnly = chromiumWindowsOnly;
             decideTimer = new System.Windows.Forms.Timer { Interval = 150 }; // short, so the quick entry barely shows
@@ -100,8 +102,6 @@ namespace ClaudeAutoPass
             decideTimer = null;
             launchTimer?.Dispose();
             launchTimer = null;
-            trayCheck?.Dispose();
-            trayCheck = null;
         }
 
         static bool IsClaudeProcess(int pid)
@@ -257,12 +257,9 @@ namespace ClaudeAutoPass
         {
             // A main window Claude itself hid (X, closed to the tray) must be shown by Claude: showing it from outside makes
             // the window appear but Chromium keeps its content hidden, so it looks frozen and takes no input (owner's report
-            // on 1.2.3). Claude shows it when its tray icon is clicked, so click that instead.
-            if (!IsWindowVisible(h) && UseTrayIcon && ClickTrayIcon(h))
-            {
-                ScheduleTrayCheck(h);
-                return;
-            }
+            // on 1.2.4). Claude's tray icon opens its quick entry on a left click (1.2.5 tried that), and its right-click menu
+            // starts with "Show App", which shows the main window: open that menu and pick it.
+            if (!IsWindowVisible(h) && UseTrayIcon && OpenFromTrayMenu(h)) return;
             if (!IsWindowVisible(h)) ShowWindow(h, Show);
             if (IsIconic(h)) ShowWindow(h, Restore);
             uint self = GetCurrentThreadId();
@@ -279,11 +276,23 @@ namespace ClaudeAutoPass
         // Electron's tray icons: a hidden "Electron_NotifyIconHostWindow" in the main process receives the icon's mouse
         // messages as WM_APP + 1, with the icon's id (from 2 up) in wParam and the mouse message in lParam.
         const string TrayHostClass = "Electron_NotifyIconHostWindow";
-        const uint TrayMessage = 0x8000 + 1, LeftButtonDown = 0x0201;
+        const uint TrayMessage = 0x8000 + 1, RightButtonDown = 0x0204;
         const int FirstTrayIconId = 2, LastTrayIconId = 9;
+        // UI Automation ids (UIAutomationClient.h).
+        const int ControlTypeProperty = 30003, MenuItemControlType = 50011;
+        const string ShowAppLabel = "Show App";
 
-        /// <summary>Clicks the tray icon of the process that owns this window; false when it has no Electron tray icon.</summary>
-        static bool ClickTrayIcon(IntPtr main)
+        /// <summary>False only in a self-test comparing with showing the window from outside.</summary>
+        internal static bool UseTrayIcon = true;
+
+        static System.Threading.SynchronizationContext ui;
+        static int menuBusy;
+
+        /// <summary>
+        /// Right-clicks the tray icon of the process that owns this window and picks the first item of the menu that opens
+        /// ("Show App" in Claude) on a worker thread; false when the process has no Electron tray icon.
+        /// </summary>
+        static bool OpenFromTrayMenu(IntPtr main)
         {
             GetWindowThreadProcessId(main, out uint pid);
             var hosts = new List<IntPtr>();
@@ -297,31 +306,82 @@ namespace ClaudeAutoPass
                 }
             }
             if (hosts.Count == 0) return false;
+            if (System.Threading.Interlocked.Exchange(ref menuBusy, 1) == 1) return true; // a menu is being picked already
+            HashSet<IntPtr> before = PopupWindows(pid);
             AllowSetForegroundWindow(pid); // so Claude may bring its window to the front
             foreach (IntPtr host in hosts)
                 for (int id = FirstTrayIconId; id <= LastTrayIconId; id++) // ids that match no icon are ignored
-                    PostMessage(host, TrayMessage, (IntPtr)id, (IntPtr)LeftButtonDown);
-            log?.Invoke("单击任务栏：已单击 Claude 的托盘图标来打开主窗口 / clicked Claude's tray icon to open its main window");
+                    PostMessage(host, TrayMessage, (IntPtr)id, (IntPtr)RightButtonDown);
+            var thread = new System.Threading.Thread(() =>
+            {
+                string note;
+                try { note = PickShowApp(main, pid, before); }
+                catch (Exception ex) { note = "出错 / error: " + ex.Message; }
+                finally { System.Threading.Interlocked.Exchange(ref menuBusy, 0); }
+                Note("单击任务栏（托盘菜单）/ tray menu: " + note);
+            }) { IsBackground = true, Name = "Claude tray menu" };
+            thread.SetApartmentState(System.Threading.ApartmentState.MTA);
+            thread.Start();
             return true;
         }
 
-        /// <summary>False only in a self-test comparing with showing the window from outside.</summary>
-        internal static bool UseTrayIcon = true;
-
-        static System.Windows.Forms.Timer trayCheck;
-
-        /// <summary>Notes in the scan log whether the tray click opened the main window.</summary>
-        static void ScheduleTrayCheck(IntPtr main)
+        /// <summary>Waits for the tray menu, presses "Show App" (or the first enabled item) and says what happened.</summary>
+        static string PickShowApp(IntPtr main, uint pid, HashSet<IntPtr> before)
         {
-            trayCheck?.Dispose();
-            var check = trayCheck = new System.Windows.Forms.Timer { Interval = 1500 };
-            check.Tick += (s, e) =>
+            var watch = Stopwatch.StartNew();
+            Interop.UIAutomationClient.IUIAutomation uia = null;
+            string seen = "菜单没出来 / no menu appeared";
+            while (watch.ElapsedMilliseconds < 3000)
             {
-                check.Stop();
-                if (!IsWindowVisible(main))
-                    log?.Invoke("单击任务栏：托盘图标没打开 Claude 主窗口，请右键托盘图标打开 / the tray click did not open Claude's main window");
-            };
-            check.Start();
+                System.Threading.Thread.Sleep(100);
+                if (IsWindowVisible(main)) return "主窗口已打开 / main window open";
+                IntPtr menu = IntPtr.Zero;
+                foreach (IntPtr w in PopupWindows(pid)) if (!before.Contains(w)) { menu = w; break; }
+                if (menu == IntPtr.Zero) continue;
+                uia = uia ?? Scanner.CreateAutomation();
+                var items = uia.ElementFromHandle(menu)?.FindAll(Interop.UIAutomationClient.TreeScope.TreeScope_Descendants,
+                    uia.CreatePropertyCondition(ControlTypeProperty, MenuItemControlType));
+                if (items == null || items.Length == 0) { seen = "菜单里还没有项目 / menu has no items yet"; continue; }
+                Interop.UIAutomationClient.IUIAutomationElement pick = null, first = null;
+                var names = new List<string>();
+                for (int i = 0; i < items.Length; i++)
+                {
+                    var item = items.GetElement(i);
+                    string name = item.CurrentName ?? "";
+                    names.Add(name);
+                    if (name.Length == 0 || item.CurrentIsEnabled == 0) continue;
+                    if (first == null) first = item;
+                    if (pick == null && string.Equals(name, ShowAppLabel, StringComparison.OrdinalIgnoreCase)) pick = item;
+                }
+                pick = pick ?? first; // the label is translated in some languages; "Show App" is the menu's first item
+                if (pick == null) return "菜单里没有能点的项目 / no enabled item: " + string.Join(" / ", names);
+                string pressed = Scanner.Press(pick);
+                for (int i = 0; i < 15 && !IsWindowVisible(main); i++) System.Threading.Thread.Sleep(100);
+                return $"点了「{pick.CurrentName}」({pressed})，主窗口{(IsWindowVisible(main) ? "已打开 / opened" : "没打开 / not opened")}；菜单 / menu: {string.Join(" / ", names)}";
+            }
+            return seen;
+        }
+
+        /// <summary>Visible, untitled tool windows of the process: Chromium's menus.</summary>
+        static HashSet<IntPtr> PopupWindows(uint pid)
+        {
+            var found = new HashSet<IntPtr>();
+            EnumWindows((h, _) =>
+            {
+                GetWindowThreadProcessId(h, out uint owner);
+                if (owner == pid && IsWindowVisible(h) && (GetWindowLong(h, ExStyle) & ToolWindow) != 0
+                    && ClassOf(h).StartsWith("Chrome_WidgetWin", StringComparison.Ordinal))
+                    found.Add(h);
+                return true;
+            }, IntPtr.Zero);
+            return found;
+        }
+
+        /// <summary>Writes a note from any thread on the thread that started this.</summary>
+        static void Note(string text)
+        {
+            if (ui != null) ui.Post(_ => log?.Invoke(text), null);
+            else log?.Invoke(text);
         }
 
         static readonly IntPtr MessageOnly = new IntPtr(-3);

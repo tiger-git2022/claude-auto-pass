@@ -81,7 +81,7 @@ jobs:
       - name: Self-test opening a hidden Electron window from the taskbar
         if: steps.version.outputs.skip != 'true'
         run: |
-          # A stand-in for Claude Desktop (Electron, closes to the tray); the tray app must open its main window so that the
+          # A stand-in for Claude Desktop (Electron, closes to the tray, Claude's tray menu); the tray app must open its main window so that the
           # page inside knows it is visible again (a window shown from outside stays frozen).
           $dir = (Resolve-Path windows/tests/electron-tray).Path
           Push-Location $dir
@@ -104,14 +104,14 @@ jobs:
             if (-not (Test-Path $res)) { Write-Host "no result from the Electron app"; return $null }
             $r = Get-Content $res -Raw | ConvertFrom-Json
             $r.events | ForEach-Object { Write-Host "  app: $_" }
-            Write-Host "mainVisible=$($r.mainVisible) page=$($r.page) trayClicks=$($r.trayClicks)"
+            Write-Host "mainVisible=$($r.mainVisible) page=$($r.page) leftClicks=$($r.leftClicks) menus=$($r.menus) showApp=$($r.showApp)"
             return $r
           }
           # Informational: the old way, showing the hidden window from outside.
           $old = Run-Fake 'outside' @('--no-tray-click')
           $new = Run-Fake 'tray' @()
-          if (-not ($new -and $new.mainVisible -and $new.page -eq 'visible' -and $new.trayClicks -ge 1)) {
-            Write-Error "The hidden Electron main window was not opened through its tray icon"; exit 1
+          if (-not ($new -and $new.mainVisible -and $new.page -eq 'visible' -and $new.showApp -ge 1 -and $new.leftClicks -eq 0)) {
+            Write-Error "The hidden Electron main window was not opened through its tray menu's Show App"; exit 1
           }
       - name: Self-test with Edge (Chromium, like Claude Desktop)
         if: steps.version.outputs.skip != 'true'

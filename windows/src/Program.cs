@@ -225,7 +225,7 @@ namespace ClaudeAutoPass
 
         /// <summary>
         /// "单击任务栏打开 Claude" watching another program (a stand-in Electron app in CI) for some seconds and noting what it
-        /// did. --no-tray-click shows a hidden window from outside instead of clicking the tray icon, to compare.
+        /// did. --no-tray-click shows a hidden window from outside instead of using the tray menu, to compare.
         /// </summary>
         public static int TaskbarProcess(string processName, int seconds, string output, bool noTrayClick)
         {
