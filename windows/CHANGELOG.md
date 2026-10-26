@@ -1,5 +1,17 @@
 # Windows 版更新记录 / Windows Changelog
 
+## 1.2.7
+
+### 中文
+
+- 修复 1.2.6 左键单击任务栏仍打不开 Claude 主窗口（右键托盘时可以）：单击任务栏时 Claude 先弹出快速输入框，托盘菜单一出来，快速输入框就自己收起，并把焦点还给之前的窗口，顺带把刚弹出的托盘菜单也关掉了（作者电脑上的日志）。现在菜单被关掉或没出来时会自动再弹一次，这时快速输入框已经收起，菜单能留住，再点「显示应用」。
+- 扫描日志记下每次尝试的结果和用时。
+
+### English
+
+- Fixes 1.2.6 still not opening Claude's main window on a left click on the taskbar (it worked after a tray right-click): on a taskbar click Claude shows its quick entry first, which closes itself once the tray menu takes the focus and hands the focus back to the previous window, closing the menu too (owner's log). Now the menu is popped up again when it closed or didn't appear; the quick entry is gone by then, so the menu stays and "Show App" is picked.
+- The scan log notes each try and how long it took.
+
 ## 1.2.6
 
 ### 中文

@@ -1,7 +1,7 @@
 // Stands in for Claude Desktop in CI, with its tray behavior (Claude 3.6556 on Windows): a main window that closes to the
 // tray (hidden, like Claude's X); a tray icon whose left click toggles the always-on-top quick entry and whose right click
 // pops up a menu starting with "Show App", which shows the main window. The quick entry also pops up by itself later
-// (what a taskbar click on Claude shows).
+// (what a taskbar click on Claude shows), and closes the tray menu when it loses the focus.
 // Writes whether the main window ended up shown, and whether its page knows it is visible (a window shown from outside
 // stays "hidden" inside Chromium, so it looks frozen).
 const { app, BrowserWindow, Menu, Tray, nativeImage } = require('electron');
@@ -31,6 +31,14 @@ app.whenReady().then(() => {
   quick = new BrowserWindow({ width: 360, height: 90, x: 400, y: 600, title: 'Quick entry', show: false, frame: false,
     resizable: false, alwaysOnTop: true, skipTaskbar: true });
   quick.loadURL('data:text/html,<title>Quick entry</title><input>');
+  // Like Claude's: losing the focus closes the quick entry, and handing the focus back to the window before it closes an
+  // open tray menu too.
+  quick.on('blur', () => {
+    if (!quick.isVisible()) return;
+    note('quick entry blurred');
+    quick.hide();
+    setTimeout(() => { note('tray menu closed by the quick entry'); tray.closeContextMenu(); }, 50);
+  });
 
   setTimeout(() => win.hide(), 4000);          // closed to the tray
   setTimeout(() => quick.show(), 9000);        // the taskbar click opens the quick entry
