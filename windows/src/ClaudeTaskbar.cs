@@ -350,7 +350,8 @@ namespace ClaudeAutoPass
             Interop.UIAutomationClient.IUIAutomation uia = null;
             IntPtr seenMenu = IntPtr.Zero;
             note = "菜单没出来 / no menu appeared";
-            while (watch.ElapsedMilliseconds < 1500)
+            // The menu shows within about 0.1 s, so a try that saw none moves on soon; one that found a menu gets longer.
+            while (watch.ElapsedMilliseconds < (seenMenu == IntPtr.Zero ? 700 : 1500))
             {
                 System.Threading.Thread.Sleep(50);
                 if (IsWindowVisible(main)) { note = "主窗口已打开 / main window open"; return true; }
