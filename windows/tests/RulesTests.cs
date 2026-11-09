@@ -88,6 +88,11 @@ static class RulesTests
         Check(Versioning.IsNewer("win-v1.0.0-t1", "1.0.0-t0"), "Any release beats a dev build");
         Check(!Versioning.IsNewer("v1.0.0-t9", "1.0.0-t1"), "Android tags are ignored");
         Check(Versioning.IsNewer("win-v1.0.0-t10", "1.0.0-t9"), "Numeric, not lexical");
+        Check(Versioning.IsNewer("win-v1.2.8", "1.2.7-t1"), "Plain tag after the numbered ones");
+        Check(!Versioning.IsNewer("win-v1.2.7-t2", "1.2.8"), "Numbered tag before a plain one");
+        Check(Versioning.IsNewer("win-v1.2.10", "1.2.9") && Versioning.IsNewer("win-v1.3.0", "1.2.12"), "Plain tags by number");
+        Check(!Versioning.IsNewer("win-v1.2.8", "1.2.8"), "Same plain version");
+        Check(!Versioning.IsNewer("v1.3.0", "1.2.8"), "Plain Android tags are ignored");
 
         Console.WriteLine("Passed " + assertions + " Windows approval rule checks.");
         return 0;
