@@ -13,12 +13,15 @@
     <Prefer32Bit>false</Prefer32Bit>
     <GenerateDocumentationFile>false</GenerateDocumentationFile>
     <DebugType>embedded</DebugType>
-    <!-- Bump BaseVersion together with windows/CHANGELOG.md; CI passes BuildNumber (the N in win-vX.Y.Z-tN). -->
-    <BaseVersion>1.2.7</BaseVersion>
-    <BuildNumber Condition="'$(BuildNumber)' == ''">0</BuildNumber>
-    <Version>$(BaseVersion).$(BuildNumber)</Version>
-    <FileVersion>$(BaseVersion).$(BuildNumber)</FileVersion>
-    <InformationalVersion>$(BaseVersion)-t$(BuildNumber)</InformationalVersion>
+    <!-- Bump BaseVersion together with windows/CHANGELOG.md (a feature raises the minor, a big change the major). CI
+         passes ReleaseVersion, the tag win-vX.Y.Z: the base, or its next unused patch (scripts/release_version.py).
+         A local build reports X.Y.Z-dev, which the update check treats as older than any release. -->
+    <BaseVersion>1.2.8</BaseVersion>
+    <Version Condition="'$(ReleaseVersion)' != ''">$(ReleaseVersion)</Version>
+    <Version Condition="'$(ReleaseVersion)' == ''">$(BaseVersion)</Version>
+    <FileVersion>$(Version)</FileVersion>
+    <InformationalVersion Condition="'$(ReleaseVersion)' != ''">$(ReleaseVersion)</InformationalVersion>
+    <InformationalVersion Condition="'$(ReleaseVersion)' == ''">$(BaseVersion)-dev</InformationalVersion>
     <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
     <Product>Claude 自动审批 / Claude Auto Pass</Product>
     <Company>tiger-git2022</Company>

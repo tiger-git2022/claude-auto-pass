@@ -8,7 +8,7 @@ notes = match.group(1).strip()
 if not ('### 中文' in notes and '### English' in notes and notes.index('### 中文') < notes.index('### English')):
     sys.exit('Release notes must contain Chinese first, then English')
 zh, en = notes.split('### English', 1)
-previous = subprocess.run(['git', 'describe', '--tags', '--abbrev=0', '--match', 'v*-t*', 'HEAD'], capture_output=True, text=True).stdout.strip()
+previous = subprocess.run(['git', 'describe', '--tags', '--abbrev=0', '--match', 'v[0-9]*', 'HEAD'], capture_output=True, text=True).stdout.strip()
 log_range = [f'{previous}..HEAD'] if previous else ['-n', '20', 'HEAD']
 subjects = subprocess.check_output(['git', 'log', '--first-parent', '--format=%s (%h)', *log_range, '--', '.', ':(exclude)windows'], text=True, encoding='utf-8').strip().splitlines()
 zh_changes, en_changes = [], []

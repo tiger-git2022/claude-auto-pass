@@ -51,7 +51,7 @@ jobs:
           python tests/ci_release_test.py
       - name: Build and lint
         if: steps.version.outputs.skip != 'true'
-        run: bash gradlew assembleDebug lintDebug -Papp.buildNumber=${{ steps.version.outputs.build }} --console=plain
+        run: bash gradlew assembleDebug lintDebug -Papp.version=${{ steps.version.outputs.version }} --console=plain
       - name: Prepare signing
         if: steps.version.outputs.skip != 'true' && steps.version.outputs.publish == 'true'
         env:
@@ -65,7 +65,7 @@ jobs:
           APP_KEYSTORE_PATH: ${{ runner.temp }}/app-signing.jks
           APP_KEYSTORE_PASSWORD: ${{ secrets.APP_KEYSTORE_PASSWORD }}
         run: |
-          bash gradlew assembleRelease -Papp.buildNumber=${{ steps.version.outputs.build }} --console=plain
+          bash gradlew assembleRelease -Papp.version=${{ steps.version.outputs.version }} --console=plain
           mkdir -p dist
           cp app/build/outputs/apk/release/app-release.apk dist/claude-auto-pass.apk
           # Fail the release if any signature scheme is missing (vivo rejects APKs without the v1 certificate).

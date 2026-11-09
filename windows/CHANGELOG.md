@@ -1,5 +1,15 @@
 # Windows 版更新记录 / Windows Changelog
 
+## 1.2.8
+
+### 中文
+
+- 版本号去掉多余的 `-t1`：标签从 `win-v1.2.7-t1` 改为 `win-v1.2.8` 这种。加新功能涨中间位，大改涨第一位，修 bug 涨最后一位。
+
+### English
+
+- No more `-t1` on versions: tags change from `win-v1.2.7-t1` to the likes of `win-v1.2.8`. A new feature raises the middle number, a big change the first, a fix the last.
+
 ## 1.2.7
 
 ### 中文

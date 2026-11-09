@@ -15,3 +15,4 @@ outputs/
 # Windows
 windows/**/bin/
 windows/**/obj/
+__pycache__/
