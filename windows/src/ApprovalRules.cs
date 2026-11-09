@@ -142,7 +142,7 @@ namespace ClaudeAutoPass
             return 0;
         }
 
-        /// <summary>True when a release tag is newer than the running version (a dev build "-t0" is older than any release).</summary>
+        /// <summary>True when a release tag is newer than the running version (a dev build "-dev" or "-t0" is older than any release).</summary>
         public static bool IsNewer(string releaseTag, string currentVersion)
         {
             int[] release = Parse(releaseTag, true), current = Parse(currentVersion, false);

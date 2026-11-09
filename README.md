@@ -38,8 +38,8 @@ APK 侧载后，部分手机需先到应用详情页的菜单中选择“允许�
 ### 自动编译与发布
 
 - 推送 `main`、提交 PR 或手动运行 [Android APK](https://github.com/tiger-git2022/claude-auto-pass/actions/workflows/android.yml) 会执行规则测试、编译和 Android lint。
-- 参考 EhViewer 仓库：`main` 每次代码更新会自动生成签名 APK 并发布新的 `-tN` 编号版本（如 `1.0.0-t1`、`1.0.0-t2`）。仅修改 Markdown 文档时不触发构建。PR 和其他分支仅编译检查，不使用签名密钥。
-- 发布无需手动打标签。工作流自动计算编号、创建标签并发布正式 Release；同一提交重跑默认跳过发布，手动运行时可勾选强制重新发布。升级基础版本时，同时增加 `app/build.gradle.kts` 中的 `baseVersionName` 和 `baseVersionCode`，并更新 `CHANGELOG.md`。
+- 参考 EhViewer 仓库：`main` 每次代码更新会自动生成签名 APK 并发布新版本，标签是 `vX.Y.Z`（2026-11 以前是 `v1.0.0-tN`）。仅修改 Markdown 文档时不触发构建。PR 和其他分支仅编译检查，不使用签名密钥。
+- 发布无需手动打标签。`app/build.gradle.kts` 的 `baseVersionName` 和 `CHANGELOG.md` 一起改：加新功能涨中间位，大改涨第一位。没改版本号的推送自动发布为下一个末位（如 `v1.1.1`）。versionCode = `X*10000000 + Y*10000 + Z`。同一提交重跑默认跳过发布，手动运行时可勾选强制重新发布。Windows 版同理，版本在 `windows/ClaudeAutoPass.csproj` 的 `BaseVersion`，标签 `win-vX.Y.Z`。
 - Release 中 APK 文件名固定为 `claude-auto-pass.apk`，App 从最新正式 Release 获取更新。
 - README 和版本说明均先中文、后英文；发布流程会检查版本说明的顺序。
 - 签名密钥通过仓库 Actions Secrets `APP_KEYSTORE_BASE64`、`APP_KEYSTORE_PASSWORD` 提供，不提交到源码。后续更新须保持相同密钥，维护者应妥善备份本机密钥。
@@ -54,9 +54,9 @@ APK 侧载后，部分手机需先到应用详情页的菜单中选择“允许�
 4. 如果审批框出现了但没有被自动点击，右键托盘图标选“导出按钮文字（诊断）”，会打开一个文本，列出程序看到的 Claude 按钮文字和分类，按它调整规则即可。若诊断显示“元素很少”，选“以辅助功能模式重启 Claude”：会关闭 Claude 并加上 `--force-renderer-accessibility --disable-backgrounding-occluded-windows --disable-features=CalculateNativeWinOcclusion` 重新打开，让 Chromium 生成按钮信息，并在被挡住时继续更新。
 5. 只处理进程名为 `claude.exe` 的窗口；只点“本次会话/本次聊天中始终允许”或“允许一次”，而且附近必须有“拒绝”等其他审批选项；Claude Desktop 代码页的卡片若只有“拒绝”和“始终允许，保存到本地项目设置”，会点后者（只写入该项目的 `.claude/settings.local.json`）；除此之外不点“始终允许”、“保存到用户设置”这类永久授权，也不点 Windows 的系统授权（UAC）。设置保存在 `%AppData%\ClaudeAutoPass`，不保存对话或截图；网络只用于检查 GitHub 更新。
 6. **Steam 创意工坊年龄提示**：右键菜单「自动确认 Steam 创意工坊年龄提示」（默认开启）会在 Steam 客户端和浏览器里自动点成人内容提示框的「查看物品」。只在框里同时有「取消」和「年满 18 周岁」等文字时才点；浏览器只看标题含 Steam 的窗口。不起作用时导出诊断，里面有 Steam 窗口和按钮的情况。
-7. 检查更新会读取 `win-v*-tN` 版本，下载后先校验 SHA-256，再原地替换 exe 并重启。exe 放在需要管理员权限的文件夹时会改为打开下载页面。
+7. 检查更新会读取 `win-v*` 版本，下载后先校验 SHA-256，再原地替换 exe 并重启。exe 放在需要管理员权限的文件夹时会改为打开下载页面。
 
-发布：推送 `main` 且改动了 `windows/` 时，[Windows EXE](https://github.com/tiger-git2022/claude-auto-pass/actions/workflows/windows.yml) 工作流在 Windows 上跑规则测试、编译，并用 WinForms 窗口和 Edge（与 Claude Desktop 同为 Chromium 内核）实测自动点击，然后发布 `win-v<BaseVersion>-tN` 版本。这些 Release 不标记为“最新”，不影响 App 的更新检查；APK 工作流也会忽略 `windows/` 的改动。升级基础版本时修改 `windows/ClaudeAutoPass.csproj` 的 `BaseVersion` 并更新 `windows/CHANGELOG.md`。本地构建：`dotnet run --project windows/tests/RulesTests.csproj`，`dotnet build windows/ClaudeAutoPass.csproj -c Release`。
+发布：推送 `main` 且改动了 `windows/` 时，[Windows EXE](https://github.com/tiger-git2022/claude-auto-pass/actions/workflows/windows.yml) 工作流在 Windows 上跑规则测试、编译，并用 WinForms 窗口和 Edge（与 Claude Desktop 同为 Chromium 内核）实测自动点击，然后发布 `win-vX.Y.Z` 版本（没改 `BaseVersion` 时自动用下一个末位）。这些 Release 不标记为“最新”，不影响 App 的更新检查；APK 工作流也会忽略 `windows/` 的改动。升级基础版本时修改 `windows/ClaudeAutoPass.csproj` 的 `BaseVersion` 并更新 `windows/CHANGELOG.md`。本地构建：`dotnet run --project windows/tests/RulesTests.csproj`，`dotnet build windows/ClaudeAutoPass.csproj -c Release`。
 
 ### 本地构建
 
@@ -104,13 +104,13 @@ Button text is processed locally. No conversations, screenshots, or screen conte
 
 `windows/` contains a tray app for **Claude Desktop** with the same rules, plus desktop labels such as “Allow for this chat”. Download `claude-auto-pass.exe` from the latest `win-v…` [release](https://github.com/tiger-git2022/claude-auto-pass/releases?q=win-v&expanded=true) and run it; no installer is needed (Windows 10/11 include .NET Framework 4.8). Neither the exe nor Claude needs to stay in the foreground: it reads Claude's buttons through Windows UI Automation and invokes them without moving the mouse, even when Claude is in the background (a fully covered or minimized Claude stops updating its page: “restart Claude with accessibility” fixes the covered case; cards that appear while Claude is minimized are not seen, so the tray menu can hide Claude off-screen instead; clicking it in the taskbar brings it back). It pauses while the PC is locked. Left-click the tray icon to enable or disable; the right-click menu (Fluent style, acrylic on Windows 11) has start with Windows, button-label diagnostics, restart Claude with accessibility (`--force-renderer-accessibility --disable-backgrounding-occluded-windows --disable-features=CalculateNativeWinOcclusion`), update checks (SHA-256 verified, in-place replacement), and exit. It only acts on `claude.exe` windows, never presses permanent grants such as “Always allow” or “save to user settings” (one exception: on Claude Desktop's Code cards that offer only “Deny” and “Always allow, save to local project settings”, it presses the latter, which only writes that project's `.claude/settings.local.json`), and stores settings in `%AppData%\ClaudeAutoPass`. A tray switch (on by default) also presses “View Item” on Steam Workshop's adult-content gate in the Steam client or a browser, only when the same box shows “Cancel” and the 18+ text.
 
-The [Windows EXE](https://github.com/tiger-git2022/claude-auto-pass/actions/workflows/windows.yml) workflow runs rule tests, builds, checks real clicks against WinForms and Edge (Chromium, like Claude Desktop), and publishes `win-v1.0.0-tN` releases that are not marked latest, so the Android app's update check is unaffected.
+The [Windows EXE](https://github.com/tiger-git2022/claude-auto-pass/actions/workflows/windows.yml) workflow runs rule tests, builds, checks real clicks against WinForms and Edge (Chromium, like Claude Desktop), and publishes `win-vX.Y.Z` releases (the next patch when `BaseVersion` was not raised) that are not marked latest, so the Android app's update check is unaffected.
 
 ### Build and release
 
-Pushes to `main`, PRs, and manual workflow runs execute rule checks, compilation, and Android lint. Following the EhViewer repository, every code push to main builds a signed APK and publishes the next numbered release (`1.0.0-t1`, `1.0.0-t2`, etc.). Markdown-only changes skip builds. PRs and other branches only build and check without signing secrets.
+Pushes to `main`, PRs, and manual workflow runs execute rule checks, compilation, and Android lint. Following the EhViewer repository, every code push to main builds a signed APK and publishes a release tagged `vX.Y.Z` (before November 2026 `v1.0.0-tN`). Markdown-only changes skip builds. PRs and other branches only build and check without signing secrets.
 
-No manual tags are needed. The workflow computes the next build number, creates a tag, and publishes a stable release with `claude-auto-pass.apk` and its checksum. A previously released commit is skipped unless a manual run requests a forced release. When changing the base version, increase both `baseVersionName` and `baseVersionCode` and update the Chinese-first / English-second `CHANGELOG.md`. The app checks the latest stable release and compares numbered versions.
+No manual tags are needed. Raise `baseVersionName` in `app/build.gradle.kts` together with the Chinese-first / English-second `CHANGELOG.md`: a new feature raises the minor, a big change the major. A push that doesn't raise it is released as the next patch (such as `v1.1.1`). versionCode = `X*10000000 + Y*10000 + Z`. The workflow creates the tag and publishes a stable release with `claude-auto-pass.apk` and its checksum. A previously released commit is skipped unless a manual run requests a forced release. The app checks the latest stable release and compares versions.
 
 Signing uses repository Actions secrets `APP_KEYSTORE_BASE64` and `APP_KEYSTORE_PASSWORD`; keys are excluded from source control. Keep the same key for future updates and back it up securely.
 

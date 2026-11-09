@@ -2,9 +2,9 @@ name: Build Windows EXE
 on:
   push:
     branches: [main]
-    paths: ['windows/**', '!windows/**.md', '.github/workflows/windows.yml', 'scripts/windows-ci.py']
+    paths: ['windows/**', '!windows/**.md', '.github/workflows/windows.yml', 'scripts/windows-ci.py', 'scripts/release_version.py']
   pull_request:
-    paths: ['windows/**', '!windows/**.md', '.github/workflows/windows.yml', 'scripts/windows-ci.py']
+    paths: ['windows/**', '!windows/**.md', '.github/workflows/windows.yml', 'scripts/windows-ci.py', 'scripts/release_version.py']
   workflow_dispatch:
     inputs:
       force:
@@ -47,7 +47,7 @@ jobs:
       - name: Build exe
         if: steps.version.outputs.skip != 'true'
         run: |
-          dotnet build windows/ClaudeAutoPass.csproj -c Release -p:BuildNumber=${{ steps.version.outputs.build }}
+          dotnet build windows/ClaudeAutoPass.csproj -c Release -p:ReleaseVersion=${{ steps.version.outputs.version }}
           if ($LASTEXITCODE -ne 0) { exit 1 }
           New-Item -ItemType Directory -Force dist | Out-Null
           Copy-Item windows/bin/Release/net48/ClaudeAutoPass.exe dist/claude-auto-pass.exe

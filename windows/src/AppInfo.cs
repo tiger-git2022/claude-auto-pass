@@ -21,7 +21,7 @@ namespace ClaudeAutoPass
         /// </summary>
         public const string ClaudeSwitches = "--force-renderer-accessibility --disable-backgrounding-occluded-windows --disable-features=CalculateNativeWinOcclusion";
 
-        /// <summary>"1.0.0-t5" for CI builds, "1.0.0-t0" for local builds.</summary>
+        /// <summary>"1.2.8" for CI builds (earlier "1.0.0-t5"), "1.2.8-dev" for local builds.</summary>
         public static string Version =>
             Assembly.GetExecutingAssembly().GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion ?? "0.0.0-t0";
 

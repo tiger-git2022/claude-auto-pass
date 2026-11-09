@@ -1,5 +1,15 @@
 # 更新记录 / Changelog
 
+## 1.1.0
+
+### 中文
+
+- 版本号改成普通的语义化版本：标签从 `v1.0.0-tN` 改为 `v1.1.0` 这种，加新功能涨中间位，大改涨第一位，修 bug 涨最后一位。versionCode 随版本号变大，可以直接覆盖安装。
+
+### English
+
+- Plain semantic versions: tags change from `v1.0.0-tN` to the likes of `v1.1.0`; a new feature raises the middle number, a big change the first, a fix the last. versionCode grows with the version, so it installs over the old builds.
+
 ## 1.0.0
 
 ### 中文
