@@ -117,19 +117,19 @@ namespace ClaudeAutoPass
             kind == Kind.Session ? "已允许本次会话" : kind == Kind.Once ? "已允许一次" : kind == Kind.LocalProject ? "已始终允许（本地项目）" : "";
     }
 
-    /// <summary>Windows release tags look like win-v1.0.0-t12.</summary>
+    /// <summary>Windows release tags look like win-v1.2.8 (older ones win-v1.0.0-t12).</summary>
     public static class Versioning
     {
-        static readonly Regex Tag = new Regex(@"^win-v(\d+)\.(\d+)\.(\d+)-t(\d+)$", RegexOptions.CultureInvariant);
-        static readonly Regex Plain = new Regex(@"^v?(\d+)\.(\d+)\.(\d+)-t(\d+)$", RegexOptions.CultureInvariant);
+        static readonly Regex Tag = new Regex(@"^win-v(\d+)\.(\d+)\.(\d+)(?:-t(\d+))?$", RegexOptions.CultureInvariant);
+        static readonly Regex Plain = new Regex(@"^v?(\d+)\.(\d+)\.(\d+)(?:-t(\d+))?$", RegexOptions.CultureInvariant);
 
-        /// <summary>Parses "win-v1.2.3-t4" (or "1.2.3-t4") into comparable parts; null when invalid.</summary>
+        /// <summary>Parses "win-v1.2.3" or "win-v1.2.3-t4" (or "1.2.3", "1.2.3-t4") into comparable parts, -t last (0 without it); null when invalid.</summary>
         public static int[] Parse(string tag, bool requireWindowsPrefix)
         {
             Match m = (requireWindowsPrefix ? Tag : Plain).Match(tag ?? "");
             if (!m.Success && !requireWindowsPrefix) m = Tag.Match(tag ?? "");
             if (!m.Success) return null;
-            return Enumerable.Range(1, 4).Select(i => int.Parse(m.Groups[i].Value, CultureInfo.InvariantCulture)).ToArray();
+            return Enumerable.Range(1, 4).Select(i => m.Groups[i].Success ? int.Parse(m.Groups[i].Value, CultureInfo.InvariantCulture) : 0).ToArray();
         }
 
         public static int Compare(int[] a, int[] b)
