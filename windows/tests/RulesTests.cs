@@ -94,6 +94,12 @@ static class RulesTests
         Check(!Versioning.IsNewer("win-v1.2.8", "1.2.8"), "Same plain version");
         Check(!Versioning.IsNewer("v1.3.0", "1.2.8"), "Plain Android tags are ignored");
 
+        const string sw = "--force-renderer-accessibility --disable-backgrounding-occluded-windows --disable-features=CalculateNativeWinOcclusion";
+        Check(LaunchArgs.Relaunch("\"C:\\Program Files\\WindowsApps\\Claude_5\\app\\claude.exe\" ", sw) == sw, "Relaunch: normal Claude start");
+        Check(LaunchArgs.Relaunch("C:\\x\\msedge.exe --user-data-dir=D:\\t --app=file:///p.html", sw) == "--user-data-dir=D:\\t --app=file:///p.html " + sw, "Relaunch: keeps own arguments");
+        Check(LaunchArgs.Relaunch("\"claude.exe\" --force-renderer-accessibility --x", sw) == "--x " + sw, "Relaunch: no duplicate switches");
+        Check(LaunchArgs.WithoutProgram("claude.exe") == "", "Relaunch: program only");
+
         Console.WriteLine("Passed " + assertions + " Windows approval rule checks.");
         return 0;
     }
