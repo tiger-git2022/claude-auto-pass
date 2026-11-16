@@ -1,5 +1,23 @@
 # Windows 版更新记录 / Windows Changelog
 
+## 1.3.0
+
+### 中文
+
+- 修复「每次出现卡片都要滚动一下 Claude 才会自动点」：作者电脑上的日志显示，Claude 昨天以普通方式重新打开（更新后）之后，就丢了「以辅助功能模式重启 Claude」加的参数。这时 Claude 被别的窗口完全挡住或屏幕关掉，页面就不再更新：本工具一直在按它最后读到的那张卡片（有一次三个小时按了 7360 次），新卡片要等你切回去滚动一下才读得到。
+- 新增右键菜单开关「Claude 普通方式打开时自动以辅助功能模式重启」（默认开启）：发现 Claude 刚以普通方式打开（90 秒内，比如更新后或从开始菜单打开），就自动关掉它并带上参数重新打开，原来的启动参数保留；5 分钟内最多自动重启一次，不会来回重启。已经打开很久的 Claude 不会被关掉，只弹提示，点提示就能重启。
+- 同一个按钮连按 4 次还在时，扫描日志记一条「Claude 页面没有更新」并提示原因（半小时最多提示一次），后面的重复不再一条条写进日志，结束时记下一共按了几次。
+- 「以辅助功能模式重启 Claude」只关掉 Claude Desktop 自己的进程，不再顺带关掉终端里运行的 Claude Code，也不会误把 Claude Code 的 claude.exe 当成 Claude Desktop 重新打开。
+- CI 新增测试：以普通方式打开的 Edge 被自动带参数重启，之后窗口被完全挡住时弹出的卡片照样被点。
+
+### English
+
+- Fixes "Claude only approves after I scroll it": the owner's log shows Claude was reopened the normal way yesterday (after an update) and so lost the switches "Restart Claude with accessibility" adds. A Claude that is then fully covered, or whose display is off, stops updating its page: the tool kept pressing the last card it had read (7360 times over three hours once) and only saw the next one after the owner brought Claude up and scrolled.
+- New tray switch "Restart Claude with accessibility when it was opened the normal way" (on by default): a Claude that was just opened the normal way (within 90 s, e.g. after an update or from the Start menu) is closed and reopened with the switches, keeping its own arguments; at most once every 5 minutes, so it can't loop. A Claude that has been open for longer is never closed; a balloon offers the restart instead.
+- When the same button is still there after 4 presses, the scan log notes that Claude's page isn't updating and a balloon says why (at most every half hour); further repeats are no longer logged one by one, and the total is noted when they stop.
+- "Restart Claude with accessibility" closes only Claude Desktop's own processes, no longer Claude Code running in a terminal, and can't mistake Claude Code's claude.exe for Claude Desktop when reopening it.
+- New CI test: Edge opened the normal way is restarted with the switches, and a prompt that appears while its window is fully covered is still pressed.
+
 ## 1.2.8
 
 ### 中文

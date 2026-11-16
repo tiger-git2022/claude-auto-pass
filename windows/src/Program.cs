@@ -26,6 +26,7 @@ namespace ClaudeAutoPass
             if (args.Length >= 4 && args[0] == "--self-test-taskbar-process")
                 return SelfTest.TaskbarProcess(args[1], int.Parse(args[2]), args[3], args.Length >= 5 && args[4] == "--no-tray-click");
             if (args.Length >= 3 && args[0] == "--self-test-hider") return SelfTest.Hider(args[1], args[2]);
+            if (args.Length >= 4 && args[0] == "--self-test-relaunch") return SelfTest.Relaunch(args[1], int.Parse(args[2]), args[3]);
             if (args.Length >= 2 && args[0] == "--self-test-update") return SelfTest.Update(args[1]);
             if (args.Length >= 4 && args[0] == "--self-test-steam") return SelfTest.Steam(args[1], int.Parse(args[2]), args[3]);
 
@@ -90,6 +91,43 @@ namespace ClaudeAutoPass
                       + scanner.Diagnose();
             });
             File.WriteAllText(output, log);
+            return code;
+        }
+
+        /// <summary>
+        /// A browser opened the normal way (no accessibility switches) is restarted with them, keeping its own arguments, and a
+        /// prompt that appears later while the window is fully covered is still pressed (owner's log, 11-16).
+        /// </summary>
+        public static int Relaunch(string processName, int seconds, string output)
+        {
+            int code = 1;
+            var log = new System.Text.StringBuilder();
+            RunMta(() =>
+            {
+                var scanner = new Scanner(name => string.Equals(name, processName, StringComparison.OrdinalIgnoreCase));
+                var switches = new SwitchWatch();
+                var watch = Stopwatch.StartNew();
+                ScanResult result = null;
+                bool restarted = false, ok = false;
+                while (watch.Elapsed.TotalSeconds < seconds)
+                {
+                    SwitchState state = switches.Tick(scanner.TargetWindows(), true, out string note);
+                    if (note != null) log.AppendLine($"{watch.Elapsed.TotalSeconds:F1}s {state}: {note}");
+                    if (state == SwitchState.Restarted) restarted = true;
+                    if (state == SwitchState.Ok) ok = true;
+                    if (state == SwitchState.Ok || switches.Current?.HasSwitches == true)
+                    {
+                        result = scanner.ScanOnce();
+                        if (result.Clicked != Kind.None) break;
+                    }
+                    Thread.Sleep(500);
+                }
+                log.AppendLine($"restarted={restarted} switchesOk={ok} commandLine={switches.Current?.CommandLine}");
+                log.AppendLine($"clicked={result?.Clicked} label=\"{result?.Label}\" after={watch.Elapsed.TotalSeconds:F1}s");
+                code = restarted && ok && result?.Clicked == Kind.Session ? 0 : 1;
+                if (code != 0) log.AppendLine().Append(scanner.Diagnose());
+            });
+            File.WriteAllText(output, log.ToString());
             return code;
         }
 

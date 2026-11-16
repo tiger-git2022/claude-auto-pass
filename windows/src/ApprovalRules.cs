@@ -150,4 +150,31 @@ namespace ClaudeAutoPass
             return current == null || Compare(release, current) > 0;
         }
     }
+
+    /// <summary>Command lines for restarting Claude Desktop with extra switches.</summary>
+    public static class LaunchArgs
+    {
+        /// <summary>The command line without the program itself.</summary>
+        public static string WithoutProgram(string commandLine)
+        {
+            string s = (commandLine ?? "").TrimStart();
+            if (s.StartsWith("\"", StringComparison.Ordinal))
+            {
+                int end = s.IndexOf('"', 1);
+                return end < 0 ? "" : s.Substring(end + 1).Trim();
+            }
+            int space = s.IndexOf(' ');
+            return space < 0 ? "" : s.Substring(space + 1).Trim();
+        }
+
+        /// <summary>The original arguments (minus earlier copies of the switches) followed by the switches, so they come last and win.</summary>
+        public static string Relaunch(string commandLine, string switches)
+        {
+            string args = " " + WithoutProgram(commandLine) + " ";
+            foreach (string sw in switches.Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries))
+                args = args.Replace(" " + sw + " ", " ");
+            args = Regex.Replace(args, " {2,}", " ").Trim();
+            return (args + " " + switches).Trim();
+        }
+    }
 }

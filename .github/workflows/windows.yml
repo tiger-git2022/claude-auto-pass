@@ -195,6 +195,28 @@ jobs:
           if (Test-Path "$out.crash.txt") { Get-Content "$out.crash.txt" | ForEach-Object { Write-Host $_ } }
           $hider = ($p.ExitCode -eq 0)
           Get-Process msedge -ErrorAction SilentlyContinue | Stop-Process -Force
+          # Claude opened the normal way (e.g. after an update) has none of the switches, so a covered window stops updating
+          # (owner's log, 11-16). Required: the tool restarts such a just-opened browser with them, keeping its own arguments,
+          # and a prompt that appears afterwards while the window is fully covered is pressed.
+          Start-Sleep 2
+          $page = [Uri]::new((Resolve-Path 'windows/tests/prompt-late.html').Path).AbsoluteUri
+          Start-Process $edge -ArgumentList @("--user-data-dir=$env:RUNNER_TEMP\edge-relaunch", '--no-first-run', '--no-default-browser-check', "--app=$page")
+          Start-Sleep 6
+          $out = "$env:RUNNER_TEMP/selftest-relaunch.txt"
+          $tool = Start-Process dist/claude-auto-pass.exe -ArgumentList '--self-test-relaunch', 'msedge', '75', $out -PassThru
+          $null = $tool.Handle  # keeps ExitCode readable after WaitForExit
+          # The restart happens within seconds; the restarted page shows its prompt 25 s after loading, by then covered.
+          Start-Sleep 14
+          $cover = Start-Process pwsh -PassThru -ArgumentList '-NoProfile', '-Command', 'Add-Type -AssemblyName System.Windows.Forms; $f = New-Object Windows.Forms.Form; $f.Text = "cover"; $f.TopMost = $true; $f.FormBorderStyle = "None"; $f.StartPosition = "Manual"; $f.Bounds = [Windows.Forms.Screen]::PrimaryScreen.Bounds; [Windows.Forms.Application]::Run($f)'
+          [void]$tool.WaitForExit(90000)
+          Stop-Process -Id $cover.Id -Force -ErrorAction SilentlyContinue
+          Start-Sleep 2
+          $titles = (Get-Process msedge -ErrorAction SilentlyContinue | Where-Object MainWindowTitle | ForEach-Object MainWindowTitle) -join ', '
+          Write-Host "== Edge relaunch : exit=$($tool.ExitCode) titles=[$titles]"
+          if (Test-Path $out) { Get-Content $out | Select-Object -First 70 | ForEach-Object { Write-Host $_ } }
+          if (Test-Path "$out.crash.txt") { Get-Content "$out.crash.txt" | ForEach-Object { Write-Host $_ } }
+          $relaunch = ($tool.ExitCode -eq 0 -and $titles -match 'CLICKED-SESSION')
+          Get-Process msedge -ErrorAction SilentlyContinue | Stop-Process -Force
           # Steam Workshop adult-content gate: presses the clickable "查看物品" box, not the decoy or "取消".
           $page = [Uri]::new((Resolve-Path 'windows/tests/steam-gate.html').Path).AbsoluteUri
           Start-Process $edge -ArgumentList @("--user-data-dir=$env:RUNNER_TEMP\edge-steam", '--no-first-run', '--no-default-browser-check', '--force-renderer-accessibility', "--app=$page")
@@ -216,6 +238,7 @@ jobs:
           if (-not $hidden) { Write-Error 'Edge off-screen self-test failed'; exit 1 }
           if (-not $hiddenMin) { Write-Error 'Edge off-screen-from-minimized self-test failed'; exit 1 }
           if (-not $hider) { Write-Error 'Edge taskbar-click-on-hidden self-test failed'; exit 1 }
+          if (-not $relaunch) { Write-Error 'Edge restart-with-switches self-test failed'; exit 1 }
       - name: Self-test tray menu (screenshots)
         if: steps.version.outputs.skip != 'true'
         run: |

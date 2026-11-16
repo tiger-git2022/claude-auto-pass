@@ -79,6 +79,13 @@ namespace ClaudeAutoPass
             set => Set("taskbar_open", value ? "1" : "0");
         }
 
+        /// <summary>Restart a Claude that was just opened the normal way with the accessibility switches (on unless switched off).</summary>
+        public bool AutoRestartClaude
+        {
+            get => Get("auto_restart_claude") != "0";
+            set => Set("auto_restart_claude", value ? "1" : "0");
+        }
+
         public string LastAction
         {
             get => Get("last_action");

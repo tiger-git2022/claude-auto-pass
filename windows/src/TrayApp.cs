@@ -32,7 +32,18 @@ namespace ClaudeAutoPass
         volatile bool running = true, locked;
         volatile int claudeWindows = -1;
         string scanError;
-        bool blindHintShown, blindBalloon;
+        bool blindHintShown;
+        /// <summary>What a click on the balloon shown last does (null: nothing).</summary>
+        Action balloonAction;
+        /// <summary>Claude Desktop's main process and whether it has the accessibility switches (scan thread only).</summary>
+        readonly SwitchWatch switches = new SwitchWatch();
+        DateTime nextSwitchCheck = DateTime.MinValue, lastStuckBalloon = DateTime.MinValue;
+        /// <summary>The same button pressed again and again: Claude's page stopped updating (scan thread only).</summary>
+        string lastPressLabel;
+        DateTime lastPressAt = DateTime.MinValue;
+        int repeatPresses;
+        /// <summary>A card normally needs two presses (the page shows it once more after the first), rarely three.</summary>
+        const int StuckPresses = 4;
 
         public TrayApp()
         {
@@ -48,8 +59,8 @@ namespace ClaudeAutoPass
             tray.MouseClick += (s, e) => { if (e.Button == MouseButtons.Left) SetEnabled(!settings.Enabled); };
             tray.MouseUp += (s, e) => { if (e.Button == MouseButtons.Right) ShowMenu(); };
             // Clicking the "minimized window can't be read" balloon offers the fix.
-            tray.BalloonTipClicked += (s, e) => { if (blindBalloon) { blindBalloon = false; RestartClaude(); } };
-            tray.BalloonTipClosed += (s, e) => blindBalloon = false;
+            tray.BalloonTipClicked += (s, e) => { Action action = balloonAction; balloonAction = null; action?.Invoke(); };
+            tray.BalloonTipClosed += (s, e) => balloonAction = null;
             tray.Visible = true;
             Refresh();
 
@@ -97,6 +108,7 @@ namespace ClaudeAutoPass
                 new TrayMenu.Entry { Text = "自动确认 Steam 创意工坊年龄提示", Icon = settings.SteamGate ? SymbolRegular.CheckboxChecked24 : SymbolRegular.CheckboxUnchecked24, Click = Later(() => { settings.SteamGate = !settings.SteamGate; Refresh(); }) },
                 new TrayMenu.Entry { Text = ClaudeHider.Any ? "把 Claude 拿回来" : "把 Claude 藏到屏幕外（代替最小化）", Icon = ClaudeHider.Any ? SymbolRegular.Eye24 : SymbolRegular.EyeOff24, Click = Later(() => { hideRequest = ClaudeHider.Any ? 2 : 1; }) },
                 new TrayMenu.Entry { Text = "单击任务栏打开 Claude 主窗口", Icon = settings.TaskbarOpen ? SymbolRegular.CheckboxChecked24 : SymbolRegular.CheckboxUnchecked24, Click = Later(() => { settings.TaskbarOpen = !settings.TaskbarOpen; Refresh(); }) },
+                new TrayMenu.Entry { Text = "Claude 普通方式打开时自动以辅助功能模式重启", Icon = settings.AutoRestartClaude ? SymbolRegular.CheckboxChecked24 : SymbolRegular.CheckboxUnchecked24, Click = Later(() => { settings.AutoRestartClaude = !settings.AutoRestartClaude; Refresh(); }) },
                 new TrayMenu.Entry { Text = "开机自动启动", Icon = autostart ? SymbolRegular.CheckboxChecked24 : SymbolRegular.CheckboxUnchecked24, Click = Later(ToggleAutostart) },
                 new TrayMenu.Entry { Separator = true },
                 new TrayMenu.Entry { Text = "导出按钮文字（诊断）…", Icon = SymbolRegular.DocumentSearch24, Click = Later(Diagnose) },
@@ -142,6 +154,12 @@ namespace ClaudeAutoPass
                     if (settings.Enabled && !locked)
                     {
                         scanner = scanner ?? new Scanner();
+                        if (DateTime.UtcNow >= nextSwitchCheck)
+                        {
+                            nextSwitchCheck = DateTime.UtcNow.AddSeconds(2);
+                            CheckSwitches(scanner.TargetWindows());
+                        }
+                        if (repeatPresses > StuckPresses && (DateTime.UtcNow - lastPressAt).TotalSeconds > 4) EndRepeats();
                         var watch = Stopwatch.StartNew();
                         ScanResult result = scanner.ScanOnce();
                         watch.Stop();
@@ -157,13 +175,14 @@ namespace ClaudeAutoPass
                             {
                                 blindHintShown = true;
                                 string title = Shorten(result.Blind, 30);
-                                ui.Post(_ => { blindBalloon = true; tray.ShowBalloonTip(15000, "Claude 最小化后读不到审批卡片",
-                                    $"「{title}」最小化时 Claude 没有提供页面内容，卡片不会被自动点。点这里以辅助功能模式重启 Claude；另外 Claude 最小化后不会更新新弹出的卡片，可以用右键菜单「把 Claude 藏到屏幕外」代替最小化。", ToolTipIcon.Warning); }, null);
+                                Balloon("Claude 最小化后读不到审批卡片",
+                                    $"「{title}」最小化时 Claude 没有提供页面内容，卡片不会被自动点。点这里以辅助功能模式重启 Claude；另外 Claude 最小化后不会更新新弹出的卡片，可以用右键菜单「把 Claude 藏到屏幕外」代替最小化。", ToolTipIcon.Warning, RestartClaude);
                             }
                         }
                         if (result.Clicked != Kind.None)
                         {
-                            ScanLog.Write($"已点 / pressed \"{result.Label}\" ({watch.Elapsed.TotalSeconds:F1}s)", false);
+                            NotePress(result.Label);
+                            if (repeatPresses <= StuckPresses) ScanLog.Write($"已点 / pressed \"{result.Label}\" ({watch.Elapsed.TotalSeconds:F1}s)", false);
                             lock (settings) settings.LastAction = ApprovalRules.Describe(result.Clicked) + " · " + Autostart.Stamp() + " · " + result.Label;
                             wait = CooldownMs;
                             ui.Post(_ => Refresh(), null);
@@ -180,6 +199,53 @@ namespace ClaudeAutoPass
                 }
                 Thread.Sleep(wait);
             }
+        }
+
+        /// <summary>Shows a tray balloon from any thread; a click on it runs <paramref name="onClick"/> on the UI thread.</summary>
+        void Balloon(string title, string text, ToolTipIcon icon, Action onClick = null)
+        {
+            ui.Post(_ => { if (!running) return; balloonAction = onClick; tray.ShowBalloonTip(15000, title, text, icon); }, null);
+        }
+
+        /// <summary>Claude opened the normal way lacks the switches that keep a covered Claude updating: restart it or say so.</summary>
+        void CheckSwitches(List<Native.Window> windows)
+        {
+            SwitchState state = switches.Tick(windows, settings.AutoRestartClaude, out string note);
+            if (note != null) ScanLog.Write(note, false);
+            if (state == SwitchState.Restarted)
+                Balloon("已以辅助功能模式重启 Claude",
+                    "Claude 刚以普通方式打开（比如更新后），没带让它被挡住时继续更新的参数，已自动重启一次。不想这样可以在右键菜单关掉「Claude 普通方式打开时自动以辅助功能模式重启」。", ToolTipIcon.Info);
+            else if (state == SwitchState.Missing || state == SwitchState.RestartFailed)
+                WarnNoSwitches();
+        }
+
+        void WarnNoSwitches()
+        {
+            lastStuckBalloon = DateTime.UtcNow;
+            Balloon("Claude 被挡住时不会自动审批",
+                "Claude 是以普通方式打开的：被其他窗口完全挡住或屏幕关掉后页面不再更新，新卡片要等你切回去滚动一下才会被点。点这里以辅助功能模式重启 Claude。", ToolTipIcon.Warning, RestartClaude);
+        }
+
+        /// <summary>Counts presses of the same button in a row; past <see cref="StuckPresses"/> Claude's page isn't updating.</summary>
+        void NotePress(string label)
+        {
+            DateTime now = DateTime.UtcNow;
+            bool same = label == lastPressLabel && (now - lastPressAt).TotalSeconds < 4;
+            if (!same) EndRepeats();
+            repeatPresses = same ? repeatPresses + 1 : 1;
+            lastPressLabel = label;
+            lastPressAt = now;
+            if (repeatPresses != StuckPresses) return;
+            bool covered = !switches.UpdatesWhenCovered;
+            ScanLog.Write($"同一个按钮按了 {StuckPresses} 次还在，Claude 页面没有更新" + (covered ? "（Claude 没带辅助功能参数，可能被挡住或屏幕关了）" : "")
+                + $"，之后的重复不再逐条记录 / pressed \"{label}\" {StuckPresses} times, Claude's page isn't updating", false);
+            if (covered && (now - lastStuckBalloon).TotalMinutes >= 30) WarnNoSwitches();
+        }
+
+        void EndRepeats()
+        {
+            if (repeatPresses > StuckPresses) ScanLog.Write($"连按结束：\"{lastPressLabel}\" 一共按了 {repeatPresses} 次 / stopped after {repeatPresses} presses", false);
+            repeatPresses = 0;
         }
 
         /// <summary>Steam Workshop's gate, on its own thread so it is pressed quickly whatever Claude's scan is doing.</summary>
@@ -275,13 +341,8 @@ namespace ClaudeAutoPass
 
         void RestartClaude()
         {
-            Process[] processes = Process.GetProcesses().Where(p => { try { return ApprovalRules.IsClaudeProcess(p.ProcessName); } catch (Exception) { return false; } }).ToArray();
-            string exe = null;
-            foreach (Process p in processes)
-            {
-                try { exe = exe ?? p.MainModule?.FileName; } catch (Exception) { }
-            }
-            if (exe == null)
+            ClaudeLaunch.Main main = ClaudeLaunch.Find(ClaudeLaunch.Windows());
+            if (main == null || string.IsNullOrEmpty(main.Exe))
             {
                 MessageBox.Show("没有找到正在运行的 Claude Desktop。请先打开 Claude。", "Claude 自动审批", MessageBoxButtons.OK, MessageBoxIcon.Information);
                 return;
@@ -289,14 +350,10 @@ namespace ClaudeAutoPass
             if (MessageBox.Show("将关闭 Claude Desktop，并加上 " + AppInfo.ClaudeSwitches + " 重新打开：让本工具能读到按钮，" +
                     "并让 Claude 被其他窗口完全挡住时也继续更新（否则挡住后新弹的卡片读不到）。\n\n" +
                     "在「诊断」显示元素很少，或 Claude 被挡住、最小化后不自动审批时需要；" +
-                    "之后正常方式重新打开 Claude 就会失效。未发送的输入可能丢失。继续吗？",
+                    "之后以普通方式重新打开 Claude（包括 Claude 更新后）会失效，开着「Claude 普通方式打开时自动以辅助功能模式重启」时本工具会自动再重启一次。未发送的输入可能丢失。继续吗？",
                     "以辅助功能模式重启 Claude", MessageBoxButtons.OKCancel, MessageBoxIcon.Question) != DialogResult.OK) return;
-            foreach (Process p in processes)
-            {
-                try { p.Kill(); p.WaitForExit(5000); } catch (Exception) { }
-            }
-            try { Process.Start(new ProcessStartInfo(exe, AppInfo.ClaudeSwitches) { UseShellExecute = false }); }
-            catch (Exception ex) { MessageBox.Show("无法重新打开 Claude：" + ex.Message + "\n" + exe, "Claude 自动审批", MessageBoxButtons.OK, MessageBoxIcon.Warning); }
+            try { ClaudeLaunch.Restart(main); }
+            catch (Exception ex) { MessageBox.Show("无法重新打开 Claude：" + ex.Message + "\n" + main.Exe, "Claude 自动审批", MessageBoxButtons.OK, MessageBoxIcon.Warning); }
         }
 
         async System.Threading.Tasks.Task CheckUpdates()
