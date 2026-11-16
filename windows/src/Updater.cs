@@ -149,9 +149,9 @@ namespace ClaudeAutoPass
         internal static async Task<Release> NewestFromTagsAsync(Dictionary<string, string> notesByTag)
         {
             string site = "https://github.com/" + AppInfo.Repo;
-            // Smart-HTTP ref advertisement: lines like "<sha> refs/tags/win-v1.2.3-t1".
+            // Smart-HTTP ref advertisement: lines like "<sha> refs/tags/win-v1.2.8" (older ones "win-v1.2.7-t1").
             string refs = await GetAsync(site + ".git/info/refs?service=git-upload-pack", null).ConfigureAwait(false);
-            var tags = System.Text.RegularExpressions.Regex.Matches(refs, @"refs/tags/(win-v[0-9.]+-t[0-9]+)(?![0-9^])")
+            var tags = System.Text.RegularExpressions.Regex.Matches(refs, @"refs/tags/(win-v[0-9]+\.[0-9]+\.[0-9]+(?:-t[0-9]+)?)(?![0-9.^-])")
                 .Cast<System.Text.RegularExpressions.Match>().Select(m => m.Groups[1].Value);
             return await NewestCompleteAsync(site, tags, notesByTag ?? new Dictionary<string, string>()).ConfigureAwait(false);
         }

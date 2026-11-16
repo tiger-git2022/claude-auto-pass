@@ -8,6 +8,7 @@
 - 新增右键菜单开关「Claude 普通方式打开时自动以辅助功能模式重启」（默认开启）：发现 Claude 刚以普通方式打开（90 秒内，比如更新后或从开始菜单打开），就自动关掉它并带上参数重新打开，原来的启动参数保留；5 分钟内最多自动重启一次，不会来回重启。已经打开很久的 Claude 不会被关掉，只弹提示，点提示就能重启。
 - 同一个按钮连按 4 次还在时，扫描日志记一条「Claude 页面没有更新」并提示原因（半小时最多提示一次），后面的重复不再一条条写进日志，结束时记下一共按了几次。
 - 「以辅助功能模式重启 Claude」只关掉 Claude Desktop 自己的进程，不再顺带关掉终端里运行的 Claude Code，也不会误把 Claude Code 的 claude.exe 当成 Claude Desktop 重新打开。
+- 修复检查更新的备用方式（读标签列表）认不得 1.2.8 起不带 `-t` 的标签，会把 1.2.7-t2 当成最新版。
 - CI 新增测试：以普通方式打开的 Edge 被自动带参数重启，之后窗口被完全挡住时弹出的卡片照样被点。
 
 ### English
@@ -16,6 +17,7 @@
 - New tray switch "Restart Claude with accessibility when it was opened the normal way" (on by default): a Claude that was just opened the normal way (within 90 s, e.g. after an update or from the Start menu) is closed and reopened with the switches, keeping its own arguments; at most once every 5 minutes, so it can't loop. A Claude that has been open for longer is never closed; a balloon offers the restart instead.
 - When the same button is still there after 4 presses, the scan log notes that Claude's page isn't updating and a balloon says why (at most every half hour); further repeats are no longer logged one by one, and the total is noted when they stop.
 - "Restart Claude with accessibility" closes only Claude Desktop's own processes, no longer Claude Code running in a terminal, and can't mistake Claude Code's claude.exe for Claude Desktop when reopening it.
+- Fixes the fallback update check (the tag list) not recognizing tags without `-t` (from 1.2.8 on) and taking 1.2.7-t2 for the newest.
 - New CI test: Edge opened the normal way is restarted with the switches, and a prompt that appears while its window is fully covered is still pressed.
 
 ## 1.2.8
